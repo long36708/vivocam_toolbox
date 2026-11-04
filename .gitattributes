@@ -1,0 +1,20 @@
+# 换行符纪律：这些文件以 LF 存、LF 出。
+# shell 脚本被 build.sh 原样打进 zip 刷进 Android，若检出为 CRLF 则
+# /system/bin/sh 直接报错——CRLF 对仓库是格式问题，对本模块是功能问题。
+* text=auto eol=lf
+
+*.sh        text eol=lf
+*.awk       text eol=lf
+*.profile   text eol=lf
+*.port      text eol=lf
+*.lst       text eol=lf
+*.prop      text eol=lf
+*.html      text eol=lf
+*.md        text eol=lf
+.gitignore  text eol=lf
+LICENSE     text eol=lf
+
+# 二进制（本仓库策略上不应出现，兜底）
+*.zip binary
+*.apk binary
+*.img binary
