@@ -1,0 +1,25 @@
+# 打包产物
+dist/
+
+# Python
+__pycache__/
+*.pyc
+
+# 移植包 / 固件二进制 —— 绝不入库（vivo 专有），本仓库只提供生成工具
+*.apk
+*.img
+*.bin
+*.zip
+*.tar
+*.tgz
+*.part
+
+# 设备端运行期数据（若在本仓库调试过）
+module/.versions/
+module/ports/out/
+
+# 编辑器/系统
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

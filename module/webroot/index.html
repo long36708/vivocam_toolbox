@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>VivoCamera 工具箱</title>
+<style>
+  :root {
+    --bg: #101418; --card: #1a2027; --card2: #232b34; --border: #2c353f;
+    --fg: #e8edf2; --muted: #93a1b0; --accent: #4ea1ff; --ok: #34c759; --warn: #ffb340; --bad: #ff5b5b;
+  }
+  @media (prefers-color-scheme: light) {
+    :root { --bg:#f2f4f7; --card:#fff; --card2:#eef1f5; --border:#d8dee6; --fg:#1a222c; --muted:#5a6b7d; }
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; }
+  body {
+    background: var(--bg); color: var(--fg);
+    font: 15px/1.5 system-ui, "PingFang SC", "Noto Sans CJK SC", sans-serif;
+    padding: 14px 14px calc(20px + env(safe-area-inset-bottom));
+    max-width: 720px; margin: 0 auto;
+  }
+  .row { display: flex; align-items: center; gap: 8px; }
+  .space { flex: 1; }
+  h1 { font-size: 19px; font-weight: 700; }
+  .iconbtn {
+    background: var(--card); color: var(--fg); border: 1px solid var(--border);
+    border-radius: 10px; padding: 8px 14px; font-size: 14px;
+  }
+  .iconbtn:active { transform: scale(.96); }
+
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 14px; margin-top: 12px; }
+  .status-row { display: flex; align-items: center; gap: 12px; }
+  .dot { width: 12px; height: 12px; border-radius: 50%; background: var(--muted); flex: none; }
+  .dot.on { background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+  .dot.off { background: var(--bad); }
+  .dot.warn { background: var(--warn); }
+  .status-main { font-size: 17px; font-weight: 700; }
+  .status-sub { font-size: 13px; color: var(--muted); }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
+  .opt {
+    background: var(--card2); border: 2px solid var(--border); border-radius: 14px;
+    padding: 12px 8px; text-align: center; color: var(--fg); position: relative;
+  }
+  .opt .t { font-weight: 700; font-size: 15px; }
+  .opt .s { font-size: 12px; color: var(--muted); margin-top: 3px; }
+  .opt.cur { border-color: var(--accent); background: rgba(78,161,255,.10); }
+  .opt.cur .t::after { content: " ✓"; color: var(--accent); }
+  .opt:disabled { opacity: .45; }
+  .opt:not(:disabled):active { transform: scale(.97); }
+  .opt .badge {
+    display: inline-block; margin: 5px 2px 0; font-size: 10px; padding: 2px 7px;
+    border-radius: 8px; background: var(--warn); color: #222; white-space: nowrap;
+  }
+  .opt .badge.dl { background: var(--accent); color: #fff; }
+
+  .btn {
+    background: var(--accent); color: #fff; border: none; border-radius: 12px;
+    padding: 11px 0; font-size: 15px; font-weight: 700; width: 100%; margin-top: 10px;
+  }
+  .btn:disabled { opacity: .5; }
+  .btn.ghost { background: var(--card2); color: var(--fg); border: 1px solid var(--border); }
+  .btn.mini { padding: 10px 8px; font-size: 14px; width: auto; }
+  /* 小屏适配：两按钮一行（360dp 下每格 ~160px，四字按钮不再换行） */
+  .btngrid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-top: 2px; }
+  .btngrid .btn { width: 100%; margin-top: 0; white-space: nowrap; }
+  .btngrid .span2 { grid-column: span 2; }
+  .opt .t { word-break: break-word; }
+
+  .meta { font-size: 12.5px; color: var(--muted); margin-top: 8px; line-height: 1.7; }
+  .meta code { color: var(--fg); }
+  .hint { font-size: 12px; color: var(--muted); margin-top: 10px; }
+  .hint b { color: var(--warn); }
+  .sect { font-size: 13px; font-weight: 700; color: var(--muted); margin-top: 14px; letter-spacing: .5px; }
+
+  pre#log {
+    background: #0b0f13; color: #b8e986; border: 1px solid var(--border); border-radius: 12px;
+    font: 11.5px/1.55 ui-monospace, monospace; padding: 10px; margin-top: 10px;
+    max-height: 260px; overflow: auto; white-space: pre-wrap; word-break: break-all;
+  }
+  pre#log:empty { display: none; }
+
+  #overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,.55); backdrop-filter: blur(2px);
+    display: none; align-items: center; justify-content: center; z-index: 99; padding: 24px;
+  }
+  #overlay.show { display: flex; }
+  .spin {
+    width: 44px; height: 44px; border-radius: 50%; border: 4px solid var(--accent);
+    border-top-color: transparent; animation: r 0.8s linear infinite; margin: 0 auto 14px;
+    will-change: transform; transform: translateZ(0);
+  }
+  @keyframes r { from { transform: rotate(0deg) translateZ(0); } to { transform: rotate(360deg) translateZ(0); } }
+  .ovbox { background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 22px 26px; text-align: center; max-width: 340px; }
+  #ovmsg { font-size: 14px; color: var(--fg); }
+
+  #toast {
+    position: fixed; left: 50%; bottom: 40px; transform: translateX(-50%);
+    background: #262d35; color: #fff; padding: 10px 18px; border-radius: 20px;
+    font-size: 13.5px; opacity: 0; transition: opacity .25s; pointer-events: none;
+    max-width: 88%; z-index: 100; box-shadow: 0 4px 16px rgba(0,0,0,.4);
+  }
+  #toast.show { opacity: 1; }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+  <div class="row">
+    <h1>VivoCamera 工具箱</h1>
+    <div class="space"></div>
+    <button id="btn-reload" class="iconbtn">刷新</button>
+  </div>
+
+  <div class="card">
+    <div class="status-row">
+      <span id="dot" class="dot"></span>
+      <div class="space">
+        <div id="statusTitle" class="status-main">检测中…</div>
+        <div id="statusSub" class="status-sub"></div>
+      </div>
+    </div>
+    <div id="statusMeta" class="meta"></div>
+  </div>
+
+  <div id="modeArea">
+    <div class="sect">选择相机版本</div>
+    <div class="grid" id="modeGrid" style="margin-top:8px"></div>
+  </div>
+
+  <div id="genericNote" class="card hidden">
+    <div class="status-main" style="font-size:15px">仅诊断模式</div>
+    <div class="hint" style="margin-top:6px">
+      本机型没有匹配的 profile，模块不会伪装机型、不会铺移植库，以免把相机弄坏。
+      你仍可以：备份原厂库、查看崩溃归因、切回原厂相机。
+      <br><br>
+      「切回原厂」依赖<b>原厂属性快照</b>（首次开机自动采集，或用上方按钮手动采集）。
+      快照记录的是<b>本机真实机型码</b>，不依赖任何预设型号。
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="btngrid">
+      <button id="btn-open" class="btn ghost mini">打开相机</button>
+      <button id="btn-diag" class="btn ghost mini">崩溃归因</button>
+      <button id="btn-snapshot" class="btn ghost mini">原厂快照</button>
+      <button id="btn-import" class="btn ghost mini">导入插件</button>
+      <button id="btn-selfcheck" class="btn ghost mini span2">自检（全量）</button>
+    </div>
+    <div id="reapplyBox">
+      <button id="btn-reapply" class="btn">重新应用属性（重启后失效时用）</button>
+      <div class="hint">手机<b>重启后</b>机型伪装属性会还原，移植相机会闪退——回来点一下这个即可恢复，无需重装。</div>
+    </div>
+    <div class="hint" id="switchHint">点上方卡片切换相机版本，全程约 15 秒、无需重启。切换不清数据、设置保留；若切换后出现异常（崩溃循环/快门失灵），多为跨版本设置残留，用 root shell 执行 <code>cam.sh clear</code>。</div>
+    <pre id="log"></pre>
+  </div>
+
+  <div id="overlay"><div class="ovbox"><div class="spin"></div><div id="ovmsg">处理中…</div></div></div>
+  <div id="toast"></div>
+
+<script>
+'use strict';
+const CAM = 'com.android.camera';
+let MOD = '/data/adb/modules/vivocam-toolbox';   // 由 info 输出校正
+
+// ---------- KernelSU/bakaSU JS 桥接（兼容原版与 bakaSU，签名一致） ----------
+function hasBridge() { return typeof window.ksu !== 'undefined' && typeof window.ksu.exec === 'function'; }
+function exec(cmd, timeout) {
+  return new Promise((resolve, reject) => {
+    if (!hasBridge()) return reject(new Error('KernelSU 桥接不可用，请在 KernelSU 管理器中打开本页面'));
+    const name = '__vc_cb_' + Date.now() + '_' + Math.floor(Math.random() * 1e6);
+    const timer = setTimeout(() => { finalize(); reject(new Error('命令超时')); }, (timeout || 300) * 1000);
+    function finalize() { clearTimeout(timer); delete window[name]; }
+    window[name] = (errno, stdout, stderr) => {
+      finalize();
+      resolve({ errno: errno, stdout: stdout || '', stderr: stderr || '' });
+    };
+    try {
+      window.ksu.exec(cmd, "{}", name);
+    } catch (e) { finalize(); reject(e); }
+  });
+}
+async function firstLine(cmd, timeout) {
+  const r = await exec(cmd, timeout);
+  const s = (r.stdout || '').trim().split('\n')[0] || '';
+  return /\[.+\]/.test(s) ? '' : s;
+}
+// 解析 cam.sh info 的 key=value 输出
+function parseKV(s) {
+  const o = {};
+  (s || '').split('\n').forEach(line => {
+    const i = line.indexOf('=');
+    if (i > 0) o[line.slice(0, i).trim()] = line.slice(i + 1).trim();
+  });
+  return o;
+}
+function toast(msg) {
+  try { if (window.ksu && window.ksu.toast) { window.ksu.toast(msg); return; } } catch (e) {}
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('show'), 2600);
+}
+function overlay(msg) {
+  const o = document.getElementById('overlay');
+  document.getElementById('ovmsg').textContent = msg || '处理中…';
+  o.classList.toggle('show', !!msg);
+}
+function appendLog(s) {
+  const el = document.getElementById('log');
+  el.textContent += s + '\n'; el.scrollTop = el.scrollHeight;
+}
+function setBusy(b) {
+  busy = b;
+  document.querySelectorAll('button').forEach(x => x.disabled = b);
+  if (!b) refresh();
+}
+let busy = false;
+
+// ksu.exec 会同步阻塞主线程直到命令结束：先强制绘制一帧再执行
+function nextPaint() {
+  return new Promise((res) => {
+    let done = false;
+    const fin = () => { if (!done) { done = true; res(); } };
+    requestAnimationFrame(() => requestAnimationFrame(fin));
+    setTimeout(fin, 350);
+  });
+}
+
+// ---------- 渲染 ----------
+let ST = null;
+
+// family → info 行号映射（info 用 port_id_N 编号输出）
+function indexById(st) {
+  const m = {};
+  const n = parseInt(st.port_count || '0', 10) || 0;
+  for (let i = 1; i <= n; i++) {
+    if (st['port_id_' + i]) m[st['port_id_' + i]] = i;
+  }
+  return m;
+}
+
+function renderStatus(st) {
+  const dot = document.getElementById('dot');
+  const title = document.getElementById('statusTitle');
+  const sub = document.getElementById('statusSub');
+  const meta = document.getElementById('statusMeta');
+
+  const generic = st.generic === '1';
+  const mode = st.mode || 'stock';
+  const curPort = st.curport || '';
+  const byId = indexById(st);
+  const idx = byId[curPort];
+
+  // 一致性：mode/port 与实际版本/伪装是否吻合
+  let consistent = true, reason = '';
+  if (mode === 'port') {
+    const wantVer = idx ? st['port_ver_' + idx] : '';
+    const wantTarget = idx ? st['port_target_' + idx] : '';
+    if (!curPort || !idx) { consistent = false; reason = '状态里的移植包未安装（' + curPort + '）'; }
+    else if (wantVer && st.ver && wantVer !== st.ver) { consistent = false; reason = 'APK 版本 ' + st.ver + ' ≠ 期望 ' + wantVer; }
+    else if (wantTarget && st.spoofed !== wantTarget) { consistent = false; reason = '伪装 ' + st.spoofed + ' ≠ 期望 ' + wantTarget + '（多半是刚重启）'; }
+  } else if (mode === 'stock') {
+    if (st.spoofed && st.target && st.spoofed !== st.target) { consistent = false; reason = '仍在伪装 ' + st.spoofed + '（点「重新应用属性」恢复）'; }
+  }
+
+  dot.className = 'dot ' + (consistent ? 'on' : 'warn');
+  if (mode === 'port') {
+    const nm = idx ? st['port_name_' + idx] : curPort;
+    title.textContent = '当前：' + (nm || curPort);
+    sub.textContent = '伪装 ' + (st.spoofed || '?') + ' ｜ APK ' + (st.ver || '?');
+  } else {
+    title.textContent = '当前：原厂相机';
+    sub.textContent = 'APK ' + (st.ver || '?') + (st.target ? ' ｜ 真机型 ' + st.target : '');
+  }
+  if (!consistent && reason) sub.textContent += ' ⚠ ' + reason;
+
+  meta.innerHTML =
+    '机型 <code>' + esc(st.target || '?') + '</code> → profile <code>' + esc(st.profile || '?') + '</code><br>'
+    + 'native 库 <code>' + esc(st.libs || '0') + '</code> ｜ 库池 <code>' + esc(st.pool || '0') + '</code> ｜ 原厂备份 <code>' + esc(st.stock_backup || '0') + '</code>';
+
+  document.getElementById('reapplyBox').style.display =
+    (!consistent && mode === 'port') ? 'block' : 'none';
+  document.getElementById('genericNote').classList.toggle('hidden', !generic);
+  document.getElementById('modeArea').classList.toggle('hidden', generic);
+
+  renderModes(st, byId);
+}
+
+// 动态生成卡片：原厂 + 每个 port
+// 动态生成卡片：原厂 + 每个移植包（编号协议）
+function renderModes(st, byId) {
+  const g = document.getElementById('modeGrid');
+  g.innerHTML = '';
+  const mode = st.mode || 'stock';
+  const curPort = st.curport || '';
+
+  const stock = document.createElement('button');
+  stock.className = 'opt' + (mode === 'stock' ? ' cur' : '');
+  stock.innerHTML = '<div class="t">原厂</div><div class="s">最稳，零改动</div>';
+  stock.onclick = () => doSwitch('stock');
+  g.appendChild(stock);
+
+  const n = parseInt(st.port_count || '0', 10) || 0;
+  for (let i = 1; i <= n; i++) {
+    const id = st['port_id_' + i];
+    if (!id) continue;
+    const ready = st['port_ready_' + i] === '1';
+    const name = st['port_name_' + i] || id;
+    const ver = st['port_ver_' + i] || '';
+    const target = st['port_target_' + i] || '';
+    const size = st['port_size_' + i] || '';
+    const src = st['port_src_' + i] || 'builtin';
+    const targets = st['port_targets_' + i] || '';
+    const upd = st['plugin_upd_' + id] || '';
+
+    const b = document.createElement('button');
+    b.className = 'opt' + (mode === 'port' && curPort === id ? ' cur' : '');
+    let badge = '';
+    if (upd) badge += '<span class="badge dl">可更新 ' + esc(upd) + '</span>';
+    else if (!ready) badge += '<span class="badge dl">需下载 ' + esc(size) + 'MB</span>';
+    if (src === 'user') badge += '<span class="badge">插件</span>';
+    let warn = '';
+    if (st.profile && targets && targets.split(',').indexOf(st.profile) < 0)
+      warn = '<div class="s" style="color:var(--warn)">未在本机型验证</div>';
+    b.innerHTML = '<div class="t">' + esc(name) + '</div>'
+      + '<div class="s">' + esc(ver) + ' ｜ 伪装 ' + esc(target) + '</div>' + warn + badge;
+    b.onclick = () => {
+      if (upd) { if (confirm('发现更新 ' + upd + '，先升级吗？')) { doPlugin('update ' + id); return; } }
+      if (!ready) { toast('该移植包未安装，需先导入/下载（' + size + 'MB）'); return; }
+      doSwitch('port ' + id);
+    };
+    g.appendChild(b);
+  }
+}
+
+function esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+async function refresh() {
+  if (!hasBridge()) {
+    document.getElementById('statusTitle').textContent = 'KernelSU 桥接不可用';
+    document.getElementById('statusSub').textContent = '请从 KernelSU 管理器里的模块入口打开本页';
+    return;
+  }
+  document.getElementById('btn-reload').disabled = busy;
+  try {
+    const r = await exec('sh ' + MOD + '/cam.sh info 2>/dev/null', 30);
+    let st = parseKV(r.stdout);
+    if (st.module) MOD = st.module;
+    if (!st.profile) {
+      // 兜底：模块目录可能不同，扫一遍
+      const alt = await exec('for d in /data/adb/modules/*/cam.sh; do [ -f "$d" ] && echo "$d"; done', 10);
+      const first = (alt.stdout || '').trim().split('\n').filter(Boolean)[0];
+      if (first) {
+        MOD = first.replace(/\/cam\.sh$/, '');
+        const r2 = await exec('sh ' + MOD + '/cam.sh info 2>/dev/null', 30);
+        st = parseKV(r2.stdout);
+      }
+    }
+    ST = st;
+    renderStatus(st);
+  } catch (e) {
+    toast('状态刷新失败: ' + e.message);
+  }
+}
+
+async function doSwitch(key) {
+  if (busy) return;
+  setBusy(true);
+  appendLog('');
+  appendLog('>>> sh ' + MOD + '/cam.sh ' + key + ' 开始');
+  overlay('切换中，请稍候…');
+  await nextPaint();
+  try {
+    const r = await exec('sh ' + MOD + '/cam.sh ' + key, 240);
+    appendLog(r.stdout || '');
+    if (r.stderr) appendLog(r.stderr);
+    if (r.errno === 0 && /完成/.test(r.stdout)) {
+      overlay(''); toast('切换完成，直接打开相机即可');
+    } else {
+      overlay(''); toast('切换异常（errno=' + r.errno + '），见下方日志');
+    }
+  } catch (e) {
+    appendLog('!! ' + e.message); overlay(''); toast('执行失败: ' + e.message);
+  }
+  setBusy(false);
+}
+
+async function doReapply() {
+  if (busy) return;
+  setBusy(true);
+  appendLog(''); appendLog('>>> cam.sh apply 开始');
+  overlay('重新应用中…');
+  await nextPaint();
+  try {
+    const r = await exec('sh ' + MOD + '/cam.sh apply', 240);
+    appendLog(r.stdout || '');
+    overlay('');
+    toast(r.errno === 0 ? '已重新应用，无需重启' : 'apply 失败，见日志');
+  } catch (e) { appendLog('!! ' + e.message); overlay(''); toast('失败: ' + e.message); }
+  setBusy(false);
+}
+
+async function doOpen() {
+  try {
+    const r = await exec('am start -n ' + CAM + '/.CameraActivity 2>&1 | grep -c Error || true', 15);
+    if (r.stdout.trim() !== '0') {
+      await exec('monkey -p ' + CAM + ' -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1', 15);
+    }
+  } catch (e) { toast('打开失败: ' + e.message); }
+}
+
+async function doSelfcheck() {
+  if (busy) return;
+  setBusy(true); appendLog(''); appendLog('>>> cam.sh selfcheck');
+  overlay('自检中…'); await nextPaint();
+  try {
+    const r = await exec('sh ' + MOD + '/cam.sh selfcheck 2>&1', 90);
+    appendLog(r.stdout || ''); overlay(''); toast('自检完成，见日志');
+  } catch (e) { appendLog('!! ' + e.message); overlay(''); }
+  setBusy(false);
+}
+
+async function doDiag() {
+  if (busy) return;
+  setBusy(true); appendLog(''); appendLog('>>> cam.sh diagnose');
+  overlay('读取 tombstone…'); await nextPaint();
+  try {
+    const r = await exec('sh ' + MOD + '/cam.sh diagnose 2>&1', 60);
+    appendLog(r.stdout || ''); overlay(''); toast('归因完成，见日志');
+  } catch (e) { appendLog('!! ' + e.message); overlay(''); }
+  setBusy(false);
+}
+
+async function doSnapshot() {
+  if (busy) return;
+  setBusy(true); appendLog(''); appendLog('>>> cam.sh snapshot');
+  overlay('采集原厂属性…'); await nextPaint();
+  try {
+    const r = await exec('sh ' + MOD + '/cam.sh snapshot 2>&1', 60);
+    appendLog(r.stdout || ''); overlay('');
+    toast(r.errno === 0 ? '原厂属性快照已就绪' : '采集失败，见日志');
+  } catch (e) { appendLog('!! ' + e.message); overlay(''); }
+  setBusy(false);
+}
+
+document.getElementById('btn-reapply').onclick = doReapply;
+document.getElementById('btn-open').onclick    = doOpen;
+document.getElementById('btn-reload').onclick  = refresh;
+document.getElementById('btn-selfcheck').onclick = doSelfcheck;
+document.getElementById('btn-diag').onclick    = doDiag;
+document.getElementById('btn-snapshot').onclick = doSnapshot;
+document.getElementById('btn-import').onclick  = doImport;
+
+async function doImport() {
+  if (busy) return;
+  setBusy(true); appendLog(''); appendLog('>>> 扫描导入目录 /sdcard/Download/vivocam/');
+  overlay('扫描插件…'); await nextPaint();
+  try {
+    const r = await exec('ls -t /sdcard/Download/vivocam/*.plugin.zip 2>/dev/null | head -5', 15);
+    const files = (r.stdout || '').trim().split('\n').filter(x => x && x.indexOf('*') < 0);
+    if (!files.length) {
+      overlay('');
+      appendLog('目录里没有 *.plugin.zip。把插件包放到 /sdcard/Download/vivocam/ 再试。');
+      toast('未发现插件包');
+      setBusy(false); return;
+    }
+    for (const f of files) {
+      appendLog('>>> cam.sh plugin install ' + f);
+      overlay('安装 ' + f.split('/').pop() + ' …');
+      await nextPaint();
+      const r2 = await exec('sh ' + MOD + '/cam.sh plugin install "' + f + '" 2>&1', 300);
+      appendLog(r2.stdout || '');
+    }
+    overlay(''); toast('导入完成，见日志');
+    ST = null; await refresh();
+  } catch (e) { appendLog('!! ' + e.message); overlay(''); }
+  setBusy(false);
+}
+
+async function doPlugin(args) {
+  if (busy) return;
+  setBusy(true); appendLog(''); appendLog('>>> cam.sh plugin ' + args);
+  overlay('执行中…'); await nextPaint();
+  try {
+    const r = await exec('sh ' + MOD + '/cam.sh plugin ' + args + ' 2>&1', 300);
+    appendLog(r.stdout || ''); overlay('');
+    if (/已安装|✓/.test(r.stdout)) toast('完成');
+    ST = null; await refresh();
+  } catch (e) { appendLog('!! ' + e.message); overlay(''); }
+  setBusy(false);
+}
+
+refresh();
+</script>
+</body>
+</html>

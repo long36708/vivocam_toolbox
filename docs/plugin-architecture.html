@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>vivocam-toolbox 插件化架构</title>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&family=Noto+Serif:ital@0;1&family=Noto+Sans+SC:wght@400;500;600&family=Noto+Serif+SC:wght@400;600&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --color-paper:   #f5f5f5;   /* white-smoke */
+      --color-ink:     #2d3142;   /* jet-black */
+      --color-muted:   #4f5d75;   /* blue-slate */
+      --color-accent:  #bf4520;   /* burnt-tangerine */
+      --font-sans:     'Geist', 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
+      --font-serif:    'Instrument Serif', 'Noto Serif', 'Noto Serif SC', serif;
+      --font-mono:     'Geist Mono', ui-monospace, monospace;
+    }
+
+    body {
+      font-family: var(--font-sans);
+      background: var(--color-paper);
+      color: var(--color-ink);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 3rem 2rem;
+    }
+
+    .frame { max-width: 1280px; width: 100%; }
+    .diagram-container { width: 100%; overflow-x: auto; }
+
+    .eyebrow {
+      font-family: var(--font-mono);
+      font-size: 0.66rem;
+      font-weight: 500;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--color-muted);
+      margin-bottom: 0.5rem;
+    }
+
+    h1 {
+      font-family: var(--font-serif);
+      font-size: clamp(1.5rem, 2.4vw + 0.75rem, 2rem);
+      font-weight: 400;
+      letter-spacing: -0.02em;
+      line-height: 1.15;
+      color: var(--color-ink);
+      margin-bottom: 1.5rem;
+    }
+
+    svg { width: 100%; min-width: 1280px; display: block; }
+    @media print {
+      .diagram-container { overflow-x: visible; }
+      svg { min-width: 0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="frame">
+    <p class="eyebrow">Architecture · Diagram Design</p>
+    <h1>vivocam-toolbox 插件化架构</h1>
+
+    <div class="diagram-container">
+      <svg viewBox="0 0 1280 720" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="plugin-arch-title plugin-arch-desc">
+        <title id="plugin-arch-title">vivocam-toolbox 插件化架构</title>
+        <desc id="plugin-arch-desc">插件化架构：插件包经校验门原子安装为活跃插件，旧版本归档可回退；cam.sh 引擎按用户插件优先于内置描述发现移植包，并从内容寻址库池铺库；模块目录与运行期数据分离，模块更新不丢插件。</desc>
+        <defs>
+          <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/></marker>
+          <marker id="arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#bf4520"/></marker>
+          <marker id="arrow-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#2e5aa8"/></marker>
+        </defs>
+
+        <rect width="100%" height="100%" fill="#f5f5f5"/>
+
+        <!-- ================= zones (before arrows/nodes) ================= -->
+        <!-- 模块目录：KSU 更新即替换 -->
+        <rect x="48" y="192" width="328" height="392" rx="8" fill="rgba(45,49,66,0.02)" stroke="rgba(45,49,66,0.10)" stroke-width="0.8"/>
+        <rect x="60" y="196" width="184" height="16" rx="2" fill="#f5f5f5"/>
+        <text x="68" y="208" fill="#5a6580" font-size="12" font-weight="500"
+              font-family="'Geist','Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif">模块目录 · KSU 更新即替换</text>
+
+        <!-- 运行期数据：模块更新不丢 -->
+        <rect x="424" y="192" width="808" height="392" rx="8" fill="rgba(45,49,66,0.02)" stroke="rgba(45,49,66,0.10)" stroke-width="0.8"/>
+        <rect x="436" y="196" width="300" height="16" rx="2" fill="#f5f5f5"/>
+        <text x="444" y="208" fill="#5a6580" font-size="12" font-weight="500"
+              font-family="'Geist','Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif">运行期数据 /data/adb/vivocam · 模块更新不丢</text>
+
+        <!-- ================= arrows (before nodes) ================= -->
+        <!-- A1 插件包 → 安装器（外部导入） -->
+        <line x1="300" y1="144" x2="300" y2="240" stroke="#2e5aa8" stroke-width="1.2" marker-end="url(#arrow-link)"/>
+        <!-- A2 安装器 → 活跃插件（headline：校验通过 · 原子落盘） -->
+        <line x1="328" y1="284" x2="448" y2="284" stroke="#bf4520" stroke-width="1.2" marker-end="url(#arrow-accent)"/>
+        <!-- A3 活跃插件 → 版本归档（升级时旧版归档） -->
+        <line x1="712" y1="284" x2="984" y2="284" stroke="#4f5d75" stroke-width="1" stroke-dasharray="5,4" marker-end="url(#arrow)"/>
+        <!-- A4 活跃插件 → 库池（lib/ 按 md5 入池） -->
+        <line x1="580" y1="344" x2="580" y2="400" stroke="#4f5d75" stroke-width="1" stroke-dasharray="5,4" marker-end="url(#arrow)"/>
+        <!-- A5 引擎 → 活跃插件（发现：用户插件优先） -->
+        <path d="M 328,396 H 380 Q 388,396 388,388 V 324 Q 388,316 396,316 H 448"
+              fill="none" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <!-- A6 引擎 → 库池（按 names.lst 铺库） -->
+        <path d="M 328,424 H 396 Q 404,424 404,432 V 440 Q 404,448 412,448 H 448"
+              fill="none" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <!-- A7 内置描述 → 引擎（fallback 发现） -->
+        <line x1="200" y1="488" x2="200" y2="440" stroke="#4f5d75" stroke-width="1" stroke-dasharray="5,4" marker-end="url(#arrow)"/>
+
+        <!-- ================= arrow labels (mask + 6px gap) ================= -->
+        <rect x="308" y="186" width="52" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="334" y="196" fill="#5a6580" font-size="8" font-family="'Geist Mono',ui-monospace,monospace"
+              text-anchor="middle" letter-spacing="0.06em">IMPORT</text>
+
+        <rect x="350" y="266" width="76" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="388" y="276" fill="#5a6580" font-size="8" font-family="'Geist Mono',ui-monospace,monospace"
+              text-anchor="middle" letter-spacing="0.06em">ATOMIC INSTALL</text>
+
+        <rect x="820" y="266" width="56" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="848" y="276" fill="#5a6580" font-size="8" font-family="'Geist Mono',ui-monospace,monospace"
+              text-anchor="middle" letter-spacing="0.06em">ARCHIVE</text>
+
+        <rect x="588" y="364" width="56" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="616" y="374" fill="#5a6580" font-size="8" font-family="'Geist Mono',ui-monospace,monospace"
+              text-anchor="middle" letter-spacing="0.06em">MERGE LIBS</text>
+
+        <rect x="396" y="352" width="56" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="424" y="362" fill="#5a6580" font-size="8" font-family="'Geist Mono',ui-monospace,monospace"
+              text-anchor="middle" letter-spacing="0.06em">DISCOVER</text>
+
+        <rect x="336" y="406" width="56" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="364" y="416" fill="#5a6580" font-size="8" font-family="'Geist Mono',ui-monospace,monospace"
+              text-anchor="middle" letter-spacing="0.06em">FILL LIBS</text>
+
+        <rect x="208" y="456" width="56" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="236" y="466" fill="#5a6580" font-size="8" font-family="'Geist Mono',ui-monospace,monospace"
+              text-anchor="middle" letter-spacing="0.06em">FALLBACK</text>
+
+        <!-- ================= nodes ================= -->
+        <!-- N1 插件包（external） -->
+        <rect x="72" y="64" width="248" height="80" rx="6" fill="#f5f5f5"/>
+        <rect x="72" y="64" width="248" height="80" rx="6" fill="rgba(45,49,66,0.03)" stroke="rgba(45,49,66,0.30)" stroke-width="1"/>
+        <rect x="80" y="70" width="34" height="12" rx="2" fill="transparent" stroke="rgba(45,49,66,0.30)" stroke-width="0.8"/>
+        <text x="97" y="79" fill="rgba(45,49,66,0.80)" font-size="7" font-family="'Geist Mono',ui-monospace,monospace"
+              text-anchor="middle" letter-spacing="0.08em">INPUT</text>
+        <text x="196" y="106" fill="#2d3142" font-size="12" font-weight="600"
+              font-family="'Geist','Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif"
+              text-anchor="middle">插件包</text>
+        <text x="196" y="126" fill="#4f5d75" font-size="9" font-family="'Geist Mono',ui-monospace,monospace"
+              text-anchor="middle">*.plugin.zip · local / repo</text>
+
+        <!-- N2 插件安装器（focal） -->
+        <rect x="72" y="240" width="256" height="88" rx="6" fill="#f5f5f5"/>
+        <rect x="72" y="240" width="256" height="88" rx="6" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1"/>
+        <rect x="80" y="246" width="30" height="12" rx="2" fill="transparent" stroke="rgba(191,69,32,0.40)" stroke-width="0.8"/>
+        <text x="95" y="255" fill="rgba(191,69,32,0.80)" font-size="7" font-family="'Geist Mono',ui-monospace,monospace"
+              text-anchor="middle" letter-spacing="0.08em">GATE</text>
+        <text x="200" y="282" fill="#2d3142" font-size="12" font-weight="600"
+              font-family="'Geist','Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif"
+              text-anchor="middle">插件安装器</text>
+        <text x="200" y="302" fill="#4f5d75" font-size="9" font-family="'Geist Mono',ui-monospace,monospace"
+              text-anchor="middle">sha256 · $$MEAT · atomic mv</text>
+
+        <!-- N7 cam.sh 切换引擎（backend） -->
+        <rect x="72" y="352" width="256" height="88" rx="6" fill="#f5f5f5"/>
+        <rect x="72" y="352" width="256" height="88" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <rect x="80" y="358" width="30" height="12" rx="2" fill="transparent" stroke="rgba(45,49,66,0.40)" stroke-width="0.8"/>
+        <text x="95" y="367" fill="rgba(45,49,66,0.80)" font-size="7" font-family="'Geist Mono',ui-monospace,monospace"
+              text-anchor="middle" letter-spacing="0.08em">CORE</text>
+        <text x="200" y="394" fill="#2d3142" font-size="12" font-weight="600"
+              font-family="'Geist','Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif"
+              text-anchor="middle">cam.sh 切换引擎</text>
+        <text x="200" y="414" fill="#4f5d75" font-size="9" font-family="'Geist Mono',ui-monospace,monospace"
+              text-anchor="middle">port_find · props restore</text>
+
+        <!-- N8 内置描述（optional / fallback） -->
+        <rect x="72" y="488" width="256" height="72" rx="6" fill="#f5f5f5"/>
+        <rect x="72" y="488" width="256" height="72" rx="6" fill="rgba(45,49,66,0.02)" stroke="rgba(45,49,66,0.20)" stroke-width="1" stroke-dasharray="4,3"/>
+        <rect x="80" y="494" width="46" height="12" rx="2" fill="transparent" stroke="rgba(45,49,66,0.40)" stroke-width="0.8"/>
+        <text x="103" y="503" fill="rgba(45,49,66,0.80)" font-size="7" font-family="'Geist Mono',ui-monospace,monospace"
+              text-anchor="middle" letter-spacing="0.08em">FALLBACK</text>
+        <text x="200" y="522" fill="#2d3142" font-size="12" font-weight="600"
+              font-family="'Geist','Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif"
+              text-anchor="middle">内置描述</text>
+        <text x="200" y="542" fill="#4f5d75" font-size="9" font-family="'Geist Mono',ui-monospace,monospace"
+              text-anchor="middle">$MODDIR/ports/*.port</text>
+
+        <!-- N3 活跃插件（store） -->
+        <rect x="448" y="240" width="264" height="104" rx="6" fill="#f5f5f5"/>
+        <rect x="448" y="240" width="264" height="104" rx="6" fill="rgba(45,49,66,0.05)" stroke="#4f5d75" stroke-width="1"/>
+        <rect x="456" y="246" width="38" height="12" rx="2" fill="transparent" stroke="rgba(79,93,117,0.40)" stroke-width="0.8"/>
+        <text x="475" y="255" fill="rgba(79,93,117,0.80)" font-size="7" font-family="'Geist Mono',ui-monospace,monospace"
+              text-anchor="middle" letter-spacing="0.08em">ACTIVE</text>
+        <text x="580" y="284" fill="#2d3142" font-size="12" font-weight="600"
+              font-family="'Geist','Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif"
+              text-anchor="middle">活跃插件 &lt;family&gt;/</text>
+        <text x="580" y="306" fill="#4f5d75" font-size="9" font-family="'Geist Mono',ui-monospace,monospace"
+              text-anchor="middle">port.conf · names.lst</text>
+        <text x="580" y="322" fill="#4f5d75" font-size="9" font-family="'Geist Mono',ui-monospace,monospace"
+              text-anchor="middle">VivoCamera.apk · lib/*.so</text>
+
+        <!-- N4 版本归档（store） -->
+        <rect x="984" y="240" width="224" height="88" rx="6" fill="#f5f5f5"/>
+        <rect x="984" y="240" width="224" height="88" rx="6" fill="rgba(45,49,66,0.05)" stroke="#4f5d75" stroke-width="1"/>
+        <rect x="992" y="246" width="42" height="12" rx="2" fill="transparent" stroke="rgba(79,93,117,0.40)" stroke-width="0.8"/>
+        <text x="1013" y="255" fill="rgba(79,93,117,0.80)" font-size="7" font-family="'Geist Mono',ui-monospace,monospace"
+              text-anchor="middle" letter-spacing="0.08em">ARCHIVE</text>
+        <text x="1096" y="282" fill="#2d3142" font-size="12" font-weight="600"
+              font-family="'Geist','Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif"
+              text-anchor="middle">版本归档</text>
+        <text x="1096" y="302" fill="#4f5d75" font-size="9" font-family="'Geist Mono',ui-monospace,monospace"
+              text-anchor="middle">.versions/&lt;family&gt;/&lt;ver&gt;/</text>
+
+        <!-- N5 内容寻址库池（store） -->
+        <rect x="448" y="400" width="264" height="96" rx="6" fill="#f5f5f5"/>
+        <rect x="448" y="400" width="264" height="96" rx="6" fill="rgba(45,49,66,0.05)" stroke="#4f5d75" stroke-width="1"/>
+        <rect x="456" y="406" width="34" height="12" rx="2" fill="transparent" stroke="rgba(79,93,117,0.40)" stroke-width="0.8"/>
+        <text x="473" y="415" fill="rgba(79,93,117,0.80)" font-size="7" font-family="'Geist Mono',ui-monospace,monospace"
+              text-anchor="middle" letter-spacing="0.08em">STORE</text>
+        <text x="580" y="444" fill="#2d3142" font-size="12" font-weight="600"
+              font-family="'Geist','Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif"
+              text-anchor="middle">内容寻址库池</text>
+        <text x="580" y="464" fill="#4f5d75" font-size="9" font-family="'Geist Mono',ui-monospace,monospace"
+              text-anchor="middle">libpool/&lt;md5&gt;.so · shared</text>
+
+        <!-- N6 原厂资产（store） -->
+        <rect x="984" y="400" width="224" height="88" rx="6" fill="#f5f5f5"/>
+        <rect x="984" y="400" width="224" height="88" rx="6" fill="rgba(45,49,66,0.05)" stroke="#4f5d75" stroke-width="1"/>
+        <rect x="992" y="406" width="34" height="12" rx="2" fill="transparent" stroke="rgba(79,93,117,0.40)" stroke-width="0.8"/>
+        <text x="1009" y="415" fill="rgba(79,93,117,0.80)" font-size="7" font-family="'Geist Mono',ui-monospace,monospace"
+              text-anchor="middle" letter-spacing="0.08em">STOCK</text>
+        <text x="1096" y="442" fill="#2d3142" font-size="12" font-weight="600"
+              font-family="'Geist','Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif"
+              text-anchor="middle">原厂资产</text>
+        <text x="1096" y="462" fill="#4f5d75" font-size="9" font-family="'Geist Mono',ui-monospace,monospace"
+              text-anchor="middle">stock/ · original_props</text>
+
+        <!-- ================= callouts ================= -->
+        <text x="48" y="622" fill="#2d3142" font-size="14" font-style="italic"
+              font-family="'Instrument Serif','Noto Serif SC','Noto Serif',serif">conf 非执行解析器 —— 插件数据永不执行</text>
+        <path d="M 316,614 Q 334,576 328,538" fill="none" stroke="rgba(45,49,66,0.40)" stroke-width="1" stroke-dasharray="4,3"/>
+        <circle cx="328" cy="534" r="2" fill="#2d3142"/>
+
+        <text x="1232" y="622" fill="#4f5d75" font-size="14" font-style="italic" text-anchor="end"
+              font-family="'Instrument Serif','Noto Serif SC','Noto Serif',serif">names.lst → /data/app 铺库 · pm install 换 APK</text>
+        <path d="M 894,614 Q 790,570 720,486" fill="none" stroke="rgba(45,49,66,0.30)" stroke-width="1" stroke-dasharray="4,3"/>
+        <circle cx="716" cy="482" r="2" fill="#4f5d75"/>
+
+        <!-- ================= legend ================= -->
+        <line x1="48" y1="652" x2="1232" y2="652" stroke="rgba(45,49,66,0.10)" stroke-width="0.8"/>
+        <text x="48" y="672" fill="#4f5d75" font-size="8" font-family="'Geist Mono',ui-monospace,monospace"
+              letter-spacing="0.14em">LEGEND</text>
+        <rect x="140" y="660" width="12" height="8" rx="2" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1"/>
+        <text x="160" y="669" fill="#2d3142" font-size="12" font-weight="500"
+              font-family="'Geist','Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif">焦点：插件校验门</text>
+        <rect x="420" y="660" width="12" height="8" rx="2" fill="rgba(45,49,66,0.05)" stroke="#4f5d75" stroke-width="1"/>
+        <text x="440" y="669" fill="#2d3142" font-size="12" font-weight="500"
+              font-family="'Geist','Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif">实线：常规流</text>
+        <line x1="700" y1="664" x2="716" y2="664" stroke="#4f5d75" stroke-width="1" stroke-dasharray="5,4"/>
+        <text x="724" y="669" fill="#2d3142" font-size="12" font-weight="500"
+              font-family="'Geist','Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif">虚线：归档 · 入池 · 回退</text>
+        <rect x="980" y="660" width="12" height="8" rx="2" fill="rgba(45,49,66,0.02)" stroke="rgba(45,49,66,0.10)" stroke-width="1"/>
+        <text x="1000" y="669" fill="#2d3142" font-size="12" font-weight="500"
+              font-family="'Geist','Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif">区域：文件系统目录</text>
+      </svg>
+    </div>
+  </div>
+</body>
+</html>
