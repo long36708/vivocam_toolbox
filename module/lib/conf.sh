@@ -11,8 +11,17 @@
 #   1. 键必须命中白名单正则，且只允许 [A-Za-z_][A-Za-z0-9_]*——
 #      PATH/LD_PRELOAD/IFS 这类危险名根本进不来
 #   2. 值做单引号转义后拼进单引号字符串再 eval——文件内容永远是
-#      字面量，永远不会被当作代码。手工构造 `P=$(rm -rf /)` 验证过
-#   3. 值两侧成对双引号剥掉；行内 ` #` 注释剥掉；CRLF 兼容
+#      字面量，永远不会被当作代码。注入用例实测全部保持字面量
+#   3. 值支持三种写法（模板/描述文件里都很常见）：
+#        KEY=裸值               KEY=裸值     # 行尾注释
+#        KEY="带空格的值"        KEY="带空格的值"  # 行尾注释
+#      成对引号判断先于注释剥离，否则 KEY="v" # c 会残留引号；
+#      只出现半个引号时按裸值处理（引号不吞）
+#   4. CRLF 兼容：行尾 \r 会被剥掉
+#
+# ⚠ mksh 陷阱：case 模式里直接写反斜杠转义引号（\"）不可靠——实测匹配语义
+#   会退化成「必须以引号结尾」，`"a" # c` 反而不命中。本文件把引号存进变量
+#   QU，用 *"$QU"*"$QU"*) 形式（变量展开后引号作为字面量参与模式），行为正确。
 # ============================================================
 
 # 单引号转义（读 stdin）：' -> '\''
@@ -27,8 +36,10 @@ _conf_set(){ eval "$1='$(printf "%s" "$2" | _sq)'"; }
 conf_read(){
   local f=$1 allow=$2 pfx=$3
   [ -f "$f" ] || return 1
-  local CR LINE key val
+  local CR TAB QU LINE key val
   CR=$(printf '\r')
+  TAB=$(printf '\t')
+  QU='"'
   while IFS= read -r LINE || [ -n "$LINE" ]; do
     LINE=${LINE%"$CR"}
     case "$LINE" in ''|\#*|\;*) continue ;; esac
@@ -36,23 +47,30 @@ conf_read(){
     key=${LINE%%=*}
     val=${LINE#*=}
     # 键去首尾空白
-    while :; do case "$key" in  ' '*|'	'*) key=${key#?} ;; *) break ;; esac; done
-    while :; do case "$key" in *' '|*'	') key=${key%?} ;; *) break ;; esac; done
+    while :; do case "$key" in ' '*|"$TAB"*) key=${key#?} ;; *) break ;; esac; done
+    while :; do case "$key" in *' '|*"$TAB") key=${key%?} ;; *) break ;; esac; done
     [ -n "$key" ] || continue
-    # 键字符白名单（同时挡掉前导数字）
+    # 键字符白名单（挡前导数字与下划线开头，避免碰内部变量）
     case "$key" in *[!A-Za-z0-9_]*|[0-9]*|_*) continue ;; esac
-    # 白名单正则
+    # 字段白名单正则
     if [ -n "$allow" ]; then
       printf '%s' "$key" | grep -qE "$allow" 2>/dev/null || continue
     fi
-    # 值处理：剥成对双引号；未加引号的剥行内 " #" 注释与尾随空白
-    if [ "${val#\"}" != "$val" ] && [ "${val%\"}" != "$val" ] && [ ${#val} -ge 2 ]; then
-      val=${val#\"}; val=${val%\"}
-    else
-      case "$val" in *" #"*) val=${val%%' #'*} ;; esac
-      while :; do case "$val" in *' '|*'	') val=${val%?} ;; *) break ;; esac; done
-      while :; do case "$val" in  ' '*|'	'*) val=${val#?} ;; *) break ;; esac; done
-    fi
+
+    # ---- 值处理：成对引号优先（容忍其后空白+#注释）；无引号才剥行内注释 ----
+    case "$val" in
+      *"$QU"*"$QU"*)
+        val=${val#*"$QU"}
+        val=${val%"$QU"*}
+        ;;
+      *)
+        case "$val" in *" #"*) val=${val%%' #'*} ;; esac
+        ;;
+    esac
+    # 统一去首尾空白/制表符
+    while :; do case "$val" in ' '*|"$TAB"*) val=${val#?} ;; *) break ;; esac; done
+    while :; do case "$val" in *' '|*"$TAB") val=${val%?} ;; *) break ;; esac; done
+
     _conf_set "${pfx}${key}" "$val"
   done < "$f"
   return 0

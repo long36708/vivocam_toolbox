@@ -32,8 +32,17 @@
 
 ## 2. 写第一个 profile
 
-在 `/data/adb/vivocam/plugins/profiles/` 放一个 `<机型代号>.profile`
-（用户插件目录，模块升级不丢；验证无误后再进仓库 `profiles/`）：
+**直接用仓库自带的填空模板** `profiles/x100.profile`——占位符在填完前
+永远不会匹配任何真实属性，放在模块里也是惰性的。复制到用户插件目录再填
+（模块升级不丢、同名优先于内置）：
+
+```sh
+mkdir -p /data/adb/vivocam/plugins/profiles
+cp /data/adb/modules/vivocam-toolbox/profiles/x100.profile    /data/adb/vivocam/plugins/profiles/<你的机型>.profile
+# 然后按文件内注释逐项替换 <占位符>；其他 vivo 机型同样复制此模板改
+```
+
+需要填写的字段：
 
 ```sh
 PROFILE_ID=<代号小写，如 pdXXXX 或型号名>
