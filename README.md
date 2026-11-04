@@ -120,8 +120,13 @@ sh $M/cam.sh addport <固件解包根> <family> [伪装码]
 
 | 想做的事 | 做法 |
 |---|---|
-| **新增目标机型**（别人/自己的另一台 vivo） | 加 `profiles/<id>.profile`：身份匹配键（只用未污染属性）、原厂相机路径、HAL 格式、原厂库期望数。匹配不上时永远安全降级，不会弄坏相机 |
+| **新增目标机型**（别人/自己的另一台 vivo） | 加 `profiles/<id>.profile` 数据文件即可，零代码改动。完整步骤见 [docs/ADD-NEW-DEVICE.md](docs/ADD-NEW-DEVICE.md) |
 | **新增/升级源机型相机** | `cam.sh addport <解包镜像> <family>`；或打包成插件 zip 分享，用户 `plugin install`；在线可配 `repo.conf` + `index.conf` |
+
+> **别的 vivo 机型能用吗？** 能装——未识别机型自动降级为「仅备份+诊断」，绝不弄坏原厂相机。
+> 能否**切换成功**取决于三层门槛：App 入场券（`$$MEAT`，通常不卡）、目标机 HAL 能否供给
+> 移植包请求的 scene/流（真瓶颈，同 SoC 平台成功率高）、实机出片验证。逐机判定流程见
+> [docs/ADD-NEW-DEVICE.md](docs/ADD-NEW-DEVICE.md)。
 
 ## 开发
 
