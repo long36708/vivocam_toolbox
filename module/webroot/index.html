@@ -54,6 +54,7 @@
     border-radius: 8px; background: var(--warn); color: #222; white-space: nowrap;
   }
   .opt .badge.dl { background: var(--accent); color: #fff; }
+  .opt .badge.exp { background: var(--accent); color: #fff; cursor: pointer; }
 
   .btn {
     background: var(--accent); color: #fff; border: none; border-radius: 12px;
@@ -319,11 +320,15 @@ function renderModes(st, byId) {
     if (upd) badge += '<span class="badge dl">可更新 ' + esc(upd) + '</span>';
     else if (!ready) badge += '<span class="badge dl">需下载 ' + esc(size) + 'MB</span>';
     if (src === 'user') badge += '<span class="badge">插件</span>';
+    if (ready) badge += '<span class="badge exp">导出</span>';
     let warn = '';
     if (st.profile && targets && targets.split(',').indexOf(st.profile) < 0)
       warn = '<div class="s" style="color:var(--warn)">未在本机型验证</div>';
     b.innerHTML = '<div class="t">' + esc(name) + '</div>'
       + '<div class="s">' + esc(ver) + ' ｜ 伪装 ' + esc(target) + '</div>' + warn + badge;
+    // 「导出」徽标独立于卡片点击（stopPropagation 防止误触切换）
+    const ex = b.querySelector('.exp');
+    if (ex) ex.onclick = (ev) => { ev.stopPropagation(); doExport(id, size); };
     b.onclick = () => {
       if (upd) { if (confirm('发现更新 ' + upd + '，先升级吗？')) { doPlugin('update ' + id); return; } }
       if (!ready) { toast('该移植包未安装，需先导入/下载（' + size + 'MB）'); return; }
@@ -487,6 +492,30 @@ async function doPlugin(args) {
     const r = await exec('sh ' + MOD + '/cam.sh plugin ' + args + ' 2>&1', 300);
     appendLog(r.stdout || ''); overlay('');
     if (/已安装|✓/.test(r.stdout)) toast('完成');
+    ST = null; await refresh();
+  } catch (e) { appendLog('!! ' + e.message); overlay(''); }
+  setBusy(false);
+}
+
+// 导出插件为分享 zip（docs/PLUGIN-EXPORT.md）
+// 背书（--verified）只在本机 profile 真实匹配时才询问——
+// “已在本机实机出片”的确认责任交给这一步的活人点击
+async function doExport(id, sizeMb) {
+  if (busy) return;
+  if (!confirm('导出插件 ' + id + ' 为分享包？\nzip 写入 /sdcard/Download/vivocam/（约 ' + (sizeMb || 500) + 'MB）\n导出后可用「导入插件」往返验证。')) return;
+  const p = (ST && ST.profile) || '';
+  let flag = '';
+  if (p && p !== '_generic' && p !== 'forced'
+      && confirm('要背书吗？\n确定 = 声明「已在本机实机出片」，把本机机型 ' + p + ' 写入导出包 TARGETS\n取消 = 不背书，仅导出'))
+    flag = ' --verified';
+  setBusy(true); appendLog(''); appendLog('>>> cam.sh plugin export ' + id + flag);
+  overlay('导出中（拷贝+打包，约 1–2 分钟）…'); await nextPaint();
+  try {
+    const r = await exec('sh ' + MOD + '/cam.sh plugin export ' + id + flag + ' 2>&1', 600);
+    appendLog(r.stdout || ''); overlay('');
+    toast(r.errno === 0 && /导出完成/.test(r.stdout)
+      ? '已导出，见日志（含 sha256 与接收方指引）'
+      : '导出异常（errno=' + r.errno + '），见日志');
     ST = null; await refresh();
   } catch (e) { appendLog('!! ' + e.message); overlay(''); }
   setBusy(false);

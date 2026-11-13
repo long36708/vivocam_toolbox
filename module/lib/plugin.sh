@@ -437,3 +437,188 @@ plugin_build(){
   echo "  family=$fam ver=$ver MEAT=$meat libs=$nlib"
   echo "  分发: 把该目录打成 zip（port.conf 在根），或直接 plugin install $out"
 }
+
+# ---------- 导出（分享）：把已安装插件打成自包含 zip（docs/PLUGIN-EXPORT.md） ----------
+# plugin_export [family] [--verified]
+#
+# 产物 /sdcard/Download/vivocam/<fam>-<ver>.plugin.zip——与 WebUI「导入插件」
+# 的扫描目录一致，导完点一次导入即可往返验证。
+#
+# 与 plugin build 的分工：build 需要解包镜像（从固件从头产插件）；export 只要
+# 本机装过这个插件（APK 就在插件/legacy 目录里），是"分享给别人"的捷径。
+#
+# 自包含：库从内容寻址池按 names.lst 物化。对端库池可能是空的（新装机用户），
+# thin 包对他们不可用，故不提供 thin 导出。
+# 源插件文件永不改动：--verified 的 TARGETS 改写只发生在 staging 副本上。
+plugin_export(){
+  local fam="" verified=0 a
+  for a in "$@"; do
+    case "$a" in
+      --verified) verified=1 ;;
+      *) [ -z "$fam" ] && fam=$a ;;
+    esac
+  done
+
+  # family：显式参数 > state 的 port 字段（cam.sh stock 会清空它——原厂态下
+  # 导出照样合法，但必须显式给 family）
+  [ -n "$fam" ] || fam=$(state_get port)
+  [ -n "$fam" ] || {
+    echo "!! 未指定 family 且当前不在移植态（用法: cam.sh plugin export <family> [--verified]）"
+    return 1
+  }
+
+  # --verified 前置检查：没有诚实的本机 profile id 就不许背书——写 unknown
+  # 是往 TARGETS 里塞噪声，违反字段语义（"forced" 同理，force-port 不是实测）
+  local pf=$(state_get profile)
+  if [ "$verified" = "1" ]; then
+    case "$pf" in
+      ""|_generic|forced)
+        echo "!! --verified：本机 profile 未真实匹配（当前: ${pf:-无}），无法背书 TARGETS"
+        echo "   先 cam.sh detect 确认机型识别；未收录机型请走 docs/ADD-NEW-DEVICE.md"
+        return 1 ;;
+    esac
+  fi
+
+  # 来源：用户插件（有 port.conf）> legacy 注册目录（仅 APK+lst，需合成 conf）
+  local src="$PLUGIN_PORTS_DIR/$fam" legacy=0
+  if [ -f "$src/port.conf" ] && [ -f "$src/VivoCamera.apk" ]; then
+    :
+  elif [ -f "$PORT_ROOT/$fam/VivoCamera.apk" ] && [ -f "$PORT_ROOT/$fam/names.lst" ]; then
+    src="$PORT_ROOT/$fam"; legacy=1
+  else
+    echo "!! 插件未安装: $fam（cam.sh ports 查看）"; return 1
+  fi
+  # 装载 PORT_* 描述字段。伪装值没有独立的运行态存储（props.sh 只存原厂快照），
+  # 描述符/插件 conf 里的 TARGET_PROJECT 就是本机实际在跑的码——直接继承
+  port_find "$fam" || { echo "!! 找不到 $fam 的描述（port.conf/.port）"; return 1; }
+
+  local stage="$PLUGIN_PORTS_DIR/.export.$$"
+  rm -rf "$stage"; mkdir -p "$stage/lib"
+
+  # port.conf：用户插件原样拷贝；legacy 沿 migrate() 的继承模式合成，
+  # APK_SHA256/APK_SIZE 现算（描述符里的可能陈旧），MEAT 复核交给 plugin_validate
+  if [ "$legacy" = "1" ]; then
+    local sha size
+    sha=$(sha256sum "$src/VivoCamera.apk" 2>/dev/null | cut -d' ' -f1)
+    size=$(stat -c %s "$src/VivoCamera.apk" 2>/dev/null); [ -n "$size" ] || size=0
+    {
+      echo "SCHEMA=${SCHEMA:-1}"
+      echo "PLUGIN_KIND=port"
+      echo "PLUGIN_VER=${PLUGIN_VER:-$APK_VER}"
+      echo "PORT_ID=$fam"
+      echo "ALIASES=\"${ALIASES:-}\""
+      echo "PORT_NAME=\"$PORT_NAME\""
+      echo "SRC_PROJECT=${SRC_PROJECT:-}"
+      echo "MEAT_CODES=\"${MEAT_CODES:-${TARGET_PROJECT:-}}\""
+      echo "TARGET_PROJECT=${TARGET_PROJECT:-$SRC_PROJECT}"
+      echo "APK_VER=$APK_VER"
+      echo "APK_SIZE=$size"
+      echo "APK_SHA256=$sha"
+      echo "APK_URL="
+      echo "LIBNAME_LIST=names.lst"
+      echo "LIB_EXPECT=${LIB_EXPECT:-0}"
+      echo "MODULE_MIN=${MODULE_MIN:-5}"
+      echo "TARGETS=${TARGETS:-}"
+      echo "KNOWN_LIMITS=\"${KNOWN_LIMITS:-}\""
+    } > "$stage/port.conf"
+  else
+    cp -f "$src/port.conf" "$stage/port.conf" || { rm -rf "$stage"; return 1; }
+  fi
+
+  # --verified：本机 profile id 幂等追加进导出副本的 TARGETS
+  #（实机出片的"活人确认"在调用侧：CLI --verified / WebUI 勾选框）
+  local rep_targets="${TARGETS:-}"
+  if [ "$verified" = "1" ]; then
+    case ",${TARGETS:-}," in
+      *",$pf,"*) rep_targets="$TARGETS" ;;
+      *)
+        rep_targets="${TARGETS:+$TARGETS,}$pf"
+        if grep -q '^TARGETS=' "$stage/port.conf"; then
+          awk -v t="TARGETS=$rep_targets" '$1 ~ /^TARGETS=/{print t; next} {print}' \
+            "$stage/port.conf" > "$stage/port.conf.n" \
+            && mv -f "$stage/port.conf.n" "$stage/port.conf"
+        else
+          echo "TARGETS=$rep_targets" >> "$stage/port.conf"
+        fi
+        echo "已背书: TARGETS=$rep_targets（请确认确为本机实机出片结论）"
+        ;;
+    esac
+  fi
+
+  cp -f "$src/names.lst" "$stage/names.lst" || { rm -rf "$stage"; return 1; }
+  ln -f "$src/VivoCamera.apk" "$stage/VivoCamera.apk" 2>/dev/null \
+    || cp -f "$src/VivoCamera.apk" "$stage/VivoCamera.apk" \
+    || { rm -rf "$stage"; return 1; }
+
+  # 库池物化（自包含导出的本体）：逐名命中池。缺一个都拒绝——缺库包发出去
+  # 就是别人手里切不出片的半成品，宁可现在失败
+  local name p nlib=0 miss=""
+  while IFS= read -r name; do
+    [ -n "$name" ] || continue
+    p=$(pool_path "$name")
+    if [ -n "$p" ] && cp -f "$p" "$stage/lib/$name" 2>/dev/null; then
+      nlib=$((nlib+1))
+    else
+      miss="$miss $name"
+    fi
+  done < "$stage/names.lst"
+  if [ -n "$miss" ]; then
+    echo "!! 库池缺库，导出中止: $(echo $miss | awk '{for(i=1;i<=8&&i<=NF;i++)printf "%s ",$i; if(NF>8)printf "… 共%d个",NF}')"
+    echo "   池内容来自插件安装时的合并；重新 plugin install 原插件可补池"
+    rm -rf "$stage"; return 1
+  fi
+
+  # 六步闸门自检——legacy 合成路径是新代码，产出的东西先自己过一遍验收
+  echo "导出物自检..."
+  if ! plugin_validate "$stage"; then
+    rm -rf "$stage"; return 1
+  fi
+
+  # 空间检查：staging 组装后才知道库集真实体积，按 du 实测×1.2 对比 /sdcard 剩余
+  local need_kb avail_kb
+  need_kb=$(du -sk "$stage" 2>/dev/null | cut -f1); [ -n "$need_kb" ] || need_kb=0
+  need_kb=$((need_kb + need_kb / 5))
+  avail_kb=$(df -P -k /sdcard 2>/dev/null | tail -1 | awk '{print $4}')
+  if [ -n "$avail_kb" ] && [ "$avail_kb" -lt "$need_kb" ] 2>/dev/null; then
+    rm -rf "$stage"
+    echo "!! /sdcard 剩余 ${avail_kb}KB < 需要 ${need_kb}KB，导出中止"
+    return 1
+  fi
+
+  local dl=/sdcard/Download/vivocam
+  mkdir -p "$dl" 2>/dev/null
+  local out="$dl/${fam}-${PLUGIN_VER:-$APK_VER}.plugin.zip"
+  rm -f "$out.part"
+
+  # 打包：优先 busybox zip；真机实测 KSU 的 Magisk 构建 busybox 无打包 applet
+  #（358 个 applet 里 zip 系只有解包三件套），此时落到内置 store-only 打包器
+  local zipped=0
+  if ! busybox zip 2>&1 | head -2 | grep -q "applet not found"; then
+    ( cd "$stage" && busybox zip -q -r "$out.part" port.conf names.lst VivoCamera.apk lib ) \
+      && zipped=1
+  fi
+  if [ "$zipped" = "0" ]; then
+    echo "busybox 无 zip applet，改用内置 store-only 打包器（lib/zip.sh）..."
+    zip_store "$out.part" "$stage" port.conf names.lst VivoCamera.apk lib && zipped=1
+  fi
+  if [ "$zipped" != "1" ]; then
+    echo "!! zip 打包失败"; rm -f "$out.part"; rm -rf "$stage"; return 1
+  fi
+  # 同分区 .part → mv 原子替换（跨文件系统的 mv 不原子，.part 必须落在 /sdcard）
+  mv -f "$out.part" "$out" \
+    || { echo "!! 替换导出文件失败"; rm -f "$out.part"; rm -rf "$stage"; return 1; }
+  rm -rf "$stage"
+
+  local zsha zsz
+  zsha=$(sha256sum "$out" 2>/dev/null | cut -d' ' -f1)
+  zsz=$(du -m "$out" 2>/dev/null | cut -f1)
+  echo
+  echo "✓ 导出完成: $out（${zsz:-?}MB）"
+  echo "  sha256: $zsha（只保完整性，不背书来源；发收双方可比对）"
+  echo "  family=$fam ver=${PLUGIN_VER:-$APK_VER} libs=$nlib TARGETS=${rep_targets:-未声明}"
+  echo
+  echo "接收方安装:"
+  echo "  1. zip 放到手机 /sdcard/Download/vivocam/"
+  echo "  2. WebUI 点「导入插件」，或: sh cam.sh plugin install $out"
+  echo "  3. sh cam.sh port $fam 切换（跨机型先读 docs/ADD-NEW-DEVICE.md：HAL 供给是成败关键）"
+}

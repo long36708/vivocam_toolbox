@@ -1,5 +1,16 @@
 # Changelog
 
+## v6（未发布）
+
+- **插件导出分享**：`cam.sh plugin export <family> [--verified]` + WebUI 版本卡「导出」按钮。
+  把已安装插件打成自包含 zip 落 `/sdcard/Download/vivocam/`（与导入目录一致，可往返验证），
+  不需要解包镜像；legacy 注册目录自动合成 port.conf（沿 migrate 继承模式 + 现算 sha256）。
+  `--verified` 需本机 profile 真实匹配才允许背书 TARGETS（`_generic`/`forced` 拒绝）；
+  库池缺库即拒绝导出并列缺失名；产物先过 `plugin_validate` 六步自检再打包。
+  **store-only zip 兜底**（真机实测 KSU/Magisk 构建 busybox 无 zip applet）：CRC 取自
+  gzip 尾部 8 字节（RFC 1952），头部 hex 拼接 + `xxd -r -p` 还原，零依赖产 zip。
+  设计定稿见 `docs/PLUGIN-EXPORT.md`。二阶段搁置：SCHEMA=2 profile 随包、`--ver` 归档导出
+
 ## v5（当前）
 
 插件化架构，机型解绑：

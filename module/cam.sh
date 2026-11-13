@@ -51,6 +51,7 @@ export MODDIR VIVODIR
 . "$MODDIR/lib/probe.sh"
 . "$MODDIR/lib/props.sh"
 . "$MODDIR/lib/plugin.sh"
+. "$MODDIR/lib/zip.sh"
 
 STATE=$VIVODIR/state           # 格式: mode=<stock|port> port=<id> profile=<id>
 LEGACY_STATE=$MODDIR/cam_state # 旧版单行机型码，迁移用
@@ -553,8 +554,11 @@ case "$1" in
       build)
         shift
         take_lock; plugin_build "$@"; rc=$?; drop_lock; exit $rc ;;
+      export)
+        shift
+        take_lock; plugin_export "$@"; rc=$?; drop_lock; exit $rc ;;
       *)
-        echo "用法: cam.sh plugin {list|info|install|check|update|use|rollback|remove|build}"
+        echo "用法: cam.sh plugin {list|info|install|check|update|use|rollback|remove|build|export}"
         echo "  list                 已装插件与归档版本"
         echo "  info <family>        插件详情"
         echo "  install <zip|目录>   本地导入（校验+原子安装）"
@@ -564,6 +568,7 @@ case "$1" in
         echo "  rollback <family>    回退上一版"
         echo "  remove <family>      移除用户插件"
         echo "  build <镜像> <family> [伪装码]   从解包镜像产出插件"
+        echo "  export <family> [--verified]     把已装插件打成分享 zip（docs/PLUGIN-EXPORT.md）"
         exit 1 ;;
     esac ;;
   ports)     port_status_all ;;

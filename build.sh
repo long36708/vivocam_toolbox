@@ -21,7 +21,7 @@ VER=$(grep '^version=' "$SRC/module.prop" | cut -d= -f2)
 
 REQUIRED="module.prop cam.sh service.sh post-fs-data.sh uninstall.sh
 lib/conf.sh lib/profile.sh lib/port.sh lib/plugin.sh lib/libpool.sh
-lib/backup.sh lib/probe.sh lib/props.sh lib/xor.awk
+lib/backup.sh lib/probe.sh lib/props.sh lib/zip.sh lib/xor.awk
 lib/x500-203.lst lib/x500pm-210.lst
 profiles/pd2419.profile profiles/_generic.profile profiles/x100.profile
 ports/x500.port ports/x500pm.port
