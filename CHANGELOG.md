@@ -10,6 +10,8 @@
   **store-only zip 兜底**（真机实测 KSU/Magisk 构建 busybox 无 zip applet）：CRC 取自
   gzip 尾部 8 字节（RFC 1952），头部 hex 拼接 + `xxd -r -p` 还原，零依赖产 zip。
   设计定稿见 `docs/PLUGIN-EXPORT.md`。二阶段搁置：SCHEMA=2 profile 随包、`--ver` 归档导出
+- **WebUI 用户插件「卸载」徽标**：仅用户插件卡显示；激活态引导先回原厂，
+  校验 `mode=stock` 成功后才自动 `plugin remove`，杜绝 state 残留指向已删插件
 
 ## v5（当前）
 

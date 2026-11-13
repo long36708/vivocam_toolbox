@@ -55,6 +55,7 @@
   }
   .opt .badge.dl { background: var(--accent); color: #fff; }
   .opt .badge.exp { background: var(--accent); color: #fff; cursor: pointer; }
+  .opt .badge.rm { background: var(--warn); color: #222; cursor: pointer; }
 
   .btn {
     background: var(--accent); color: #fff; border: none; border-radius: 12px;
@@ -321,14 +322,18 @@ function renderModes(st, byId) {
     else if (!ready) badge += '<span class="badge dl">需下载 ' + esc(size) + 'MB</span>';
     if (src === 'user') badge += '<span class="badge">插件</span>';
     if (ready) badge += '<span class="badge exp">导出</span>';
+    // 卸载只给用户插件（内置描述随模块走，无可删实体）；不要求 ready——坏插件也要能删
+    if (src === 'user') badge += '<span class="badge rm">卸载</span>';
     let warn = '';
     if (st.profile && targets && targets.split(',').indexOf(st.profile) < 0)
       warn = '<div class="s" style="color:var(--warn)">未在本机型验证</div>';
     b.innerHTML = '<div class="t">' + esc(name) + '</div>'
       + '<div class="s">' + esc(ver) + ' ｜ 伪装 ' + esc(target) + '</div>' + warn + badge;
-    // 「导出」徽标独立于卡片点击（stopPropagation 防止误触切换）
+    // 「导出/卸载」徽标独立于卡片点击（stopPropagation 防止误触切换）
     const ex = b.querySelector('.exp');
     if (ex) ex.onclick = (ev) => { ev.stopPropagation(); doExport(id, size); };
+    const rm = b.querySelector('.rm');
+    if (rm) rm.onclick = (ev) => { ev.stopPropagation(); doRemove(id); };
     b.onclick = () => {
       if (upd) { if (confirm('发现更新 ' + upd + '，先升级吗？')) { doPlugin('update ' + id); return; } }
       if (!ready) { toast('该移植包未安装，需先导入/下载（' + size + 'MB）'); return; }
@@ -519,6 +524,29 @@ async function doExport(id, sizeMb) {
     ST = null; await refresh();
   } catch (e) { appendLog('!! ' + e.message); overlay(''); }
   setBusy(false);
+}
+
+// 卸载用户插件（cam.sh plugin remove）：仅删插件目录——
+// 不动已安装的相机 APK（回原厂卡片负责换回）、不清库池（跨插件共享）、不删归档
+// 激活态的插件必须先回原厂，否则 state 残留指向已删插件、重启后 apply 报"state 损坏"
+async function doRemove(id) {
+  if (busy) return;
+  const active = ST && ST.mode === 'port' && ST.curport === id;
+  if (active) {
+    if (!confirm('插件 ' + id + ' 正在使用，需先回原厂才能卸载。\n现在切回原厂（约 15–20 秒），成功后自动卸载？')) return;
+    await doSwitch('stock');
+    const r0 = await exec('sh ' + MOD + '/cam.sh info 2>/dev/null', 30);
+    const st0 = parseKV(r0.stdout || '');
+    if (st0.mode !== 'stock') {
+      ST = st0; renderStatus(st0);
+      toast('未回到原厂，卸载中止（见日志）'); return;
+    }
+    appendLog('>>> 已回原厂，继续卸载 ' + id);
+    doPlugin('remove ' + id);
+    return;
+  }
+  if (!confirm('卸载插件 ' + id + '？\n仅删除插件目录；已安装的相机 APK 不变，回原厂用「原厂」卡片切换。')) return;
+  doPlugin('remove ' + id);
 }
 
 refresh();
