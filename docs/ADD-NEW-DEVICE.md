@@ -91,6 +91,9 @@ sh cam.sh plugin build <镜像根> <family> [伪装码]
 sh cam.sh plugin install <本地路径>/<family>-<ver>.plugin.zip
 ```
 
+> 镜像根的目录结构、符号链接的坑、`$$MEAT` 伪装码怎么选、校验闸门与常见失败——
+> 完整打包教程见 [BUILD-PLUGIN.md](BUILD-PLUGIN.md)。
+
 **B. addport 直连镜像**：目标机上就有解包镜像时
 `sh cam.sh addport <镜像根> <family>`（建池+产插件+安装一步完成）。
 
