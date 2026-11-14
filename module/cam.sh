@@ -16,6 +16,7 @@
 #   sh cam.sh backup             原厂库自备份（首次或原厂更新后）
 #   sh cam.sh probe [port-id]    HAL 兼容性探针
 #   sh cam.sh diagnose           崩溃归因（Java 闪退 + tombstone 双通道）
+#   sh cam.sh profile-gen        未收录机型一键生成 profile（自动采集+验证）
 #   sh cam.sh selfcheck          全量自检
 #   sh cam.sh migrate            从旧版（硬编码布局）迁移
 #   sh cam.sh force-port <id>    对未识别机型强制应用（跳过 profile 检查）
@@ -595,6 +596,8 @@ case "$1" in
     addport "$@" ;;
   snapshot)
     if [ "$2" = "--force" ] || [ "$2" = "force" ]; then snapshot_cmd 1; else snapshot_cmd 0; fi ;;
+  profile-gen)
+    profile_generate ;;
   migrate)   migrate ;;
   *)
     echo "用法: $0 {stock|x500|x500pm|port <id>|status|apply|clear|detect|info|ports|pool|backup|probe|diagnose|selfcheck|snapshot|plugin ...|addport <镜像根> <family>|migrate|force-port <id>}"

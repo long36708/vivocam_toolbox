@@ -139,6 +139,11 @@
       「切回原厂」依赖<b>原厂属性快照</b>（首次开机自动采集，或用上方按钮手动采集）。
       快照记录的是<b>本机真实机型码</b>，不依赖任何预设型号。
     </div>
+    <button id="btn-profilegen" class="btn ghost mini" style="margin-top:8px">自动生成 profile（一键采集本机信息）</button>
+    <div class="hint" style="margin-top:6px">
+      自动采集机型身份/原厂相机路径/HAL 格式并生成 profile，生成后立即验证匹配；
+      导入插件即可试切。已有同名 profile 时会拒绝（防覆盖实测回填）。
+    </div>
   </div>
 
   <div class="card">
@@ -455,6 +460,22 @@ async function doSnapshot() {
   setBusy(false);
 }
 
+// 未收录机型的一键 profile 生成（cam.sh profile-gen）：
+// 采集→生成→自动验证三步一体，生成失败不留半套；已有同名拒绝（防覆盖实测回填）
+async function doProfileGen() {
+  if (busy) return;
+  if (!confirm('为本机自动生成 profile？\n自动采集机型身份、原厂相机路径与 HAL 格式，生成后立即验证匹配。\n导入插件后即可试切（可逆，崩了能回原厂）。')) return;
+  setBusy(true); appendLog(''); appendLog('>>> cam.sh profile-gen');
+  overlay('采集本机信息并生成 profile…'); await nextPaint();
+  try {
+    const r = await exec('sh ' + MOD + '/cam.sh profile-gen 2>&1', 120);
+    appendLog(r.stdout || ''); overlay('');
+    toast(r.errno === 0 && /已生效/.test(r.stdout) ? 'profile 已生成并生效' : '生成结果见日志');
+    ST = null; await refresh();
+  } catch (e) { appendLog('!! ' + e.message); overlay(''); }
+  setBusy(false);
+}
+
 document.getElementById('btn-reapply').onclick = doReapply;
 document.getElementById('btn-open').onclick    = doOpen;
 document.getElementById('btn-reload').onclick  = refresh;
@@ -462,6 +483,7 @@ document.getElementById('btn-selfcheck').onclick = doSelfcheck;
 document.getElementById('btn-diag').onclick    = doDiag;
 document.getElementById('btn-snapshot').onclick = doSnapshot;
 document.getElementById('btn-import').onclick  = doImport;
+document.getElementById('btn-profilegen').onclick = doProfileGen;
 
 async function doImport() {
   if (busy) return;

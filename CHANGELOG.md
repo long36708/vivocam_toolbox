@@ -17,6 +17,11 @@
   **store-only zip 兜底**（真机实测 KSU/Magisk 构建 busybox 无 zip applet）：CRC 取自
   gzip 尾部 8 字节（RFC 1952），头部 hex 拼接 + `xxd -r -p` 还原，零依赖产 zip。
   设计定稿见 `docs/PLUGIN-EXPORT.md`。原二阶段两项已随本版落地（见上两条）
+- **未收录机型一键生成 profile**：`cam.sh profile-gen` + WebUI「仅诊断模式」卡片按钮。
+  自动采集机型身份（MATCH_KEYS/SOC）/原厂相机路径与库数（stock_apk_resolve 自动定位）/
+  HWBBK_MAP（解析 ro.build.expect.hardware）/HAL 格式，生成后立即验证 MATCH_KEYS 命中
+  （失败不留半套）；已匹配机型与同名文件拒绝生成——自动档不许遮蔽已验证的内置
+  profile，也不许覆盖实测回填
 - **diagnose 双通道归因**：新增 logcat crash 缓冲区扫描（Java 闪退层，tombstone 抓不到），
   内置签名含 `duplicate column name`（高→低版本回落的数据残留 → 处置 `cam.sh clear`，
   PD2419 实测：16.x 相机升级 minivlog 库表后，原厂相机迁移重建同名列失败致录像闪退）

@@ -127,7 +127,7 @@ sh $M/cam.sh addport <固件解包根> <family> [伪装码]
 
 | 想做的事 | 做法 |
 |---|---|
-| **新增目标机型**（别人/自己的另一台 vivo） | 复制仓库内置的填空模板 `profiles/x100.profile`（占位符填完前永不匹配，惰性安全），改几行即可，零代码改动。完整步骤见 [docs/ADD-NEW-DEVICE.md](docs/ADD-NEW-DEVICE.md) |
+| **新增目标机型**（别人/自己的另一台 vivo） | 未收录机型打开 WebUI 点「自动生成 profile」一键采集生成（v6）；或手工复制填空模板 `profiles/x100.profile` 改几行，零代码改动。完整步骤见 [docs/ADD-NEW-DEVICE.md](docs/ADD-NEW-DEVICE.md) |
 | **新增/升级源机型相机** | `cam.sh addport <解包镜像> <family>`；或打包成插件 zip 分享，用户 `plugin install`；在线可配 `repo.conf` + `index.conf`。完整步骤见 [docs/BUILD-PLUGIN.md](docs/BUILD-PLUGIN.md) |
 
 > **别的 vivo 机型能用吗？** 能装——未识别机型自动降级为「仅备份+诊断」，绝不弄坏原厂相机。

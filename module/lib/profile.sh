@@ -171,3 +171,111 @@ port_enumerate(){
 port_list(){
   port_enumerate | awk '{print $1}'
 }
+
+# ---------- 未收录机型的一键 profile 生成 ----------
+# cam.sh profile-gen / WebUI「自动生成 profile」（genericNote 卡片按钮）
+#
+# 采集→生成→自动验证三步一体：所有字段来自本机实测属性与原厂相机自动定位，
+# 小白不再手填模板。安全边界（缺一不可）：
+#   * 本机已匹配非 generic profile 时拒绝——用户目录优先于内置，自动档不许
+#     遮蔽已验证的内置 profile
+#   * 目标文件已存在时拒绝——里面可能有实测回填的 KNOWN_*_MODES，不许静默覆盖
+#   * 生成后立即 profile_load 校验 + 复核 MATCH_KEYS 命中，失败即删不留半套
+#
+# 采集来源（全部多级候选，哪个有值用哪个）：
+#   PROFILE_ID   = ro.product.name 小写化     PROFILE_NAME = marketname→oem.model→model
+#   MATCH_KEYS   = name/vendor.device/sku 非空者  SOC = ro.boot.hardware→ro.board.platform
+#   OS_GEN       = originos→vivo.os（仅展示用，不参与切换）
+#   HWBBK_MAP    = ro.build.expect.hardware 的 "PD2415MA|PD2419MA" → "PD2415=PD2415MA …"
+#   STOCK_APK/库目录/库数 = stock_apk_resolve / stock_libdir_resolve 自动定位
+#   HAL_CFG_FMT  = /odm/etc/camera 有 .dat → dat，只有 .xml → xml
+profile_generate(){
+  if profile_select 2>/dev/null && [ "${GENERIC:-0}" != "1" ]; then
+    echo "!! 本机已匹配 profile: $PROFILE_ID ($PROFILE_NAME)，无需生成"
+    echo "   用户目录的自动档会遮蔽内置已验证档；确要重建请先删 $PLUGIN_PROFILES_DIR/ 下对应文件"
+    return 1
+  fi
+  local name=$(getprop ro.product.name 2>/dev/null)
+  [ -n "$name" ] || { echo "!! 读不到 ro.product.name，无法生成"; return 1; }
+  local pid=$(printf '%s' "$name" | tr 'A-Z' 'a-z' | tr -cd 'a-z0-9_-')
+  [ -n "$pid" ] || { echo "!! ro.product.name=$name 无法转成 profile id"; return 1; }
+  local out="$PLUGIN_PROFILES_DIR/$pid.profile"
+  [ -e "$out" ] && { echo "!! 已存在: $out（可能含实测回填），要重来先删它"; return 1; }
+
+  local pname=$(getprop ro.product.marketname 2>/dev/null)
+  [ -n "$pname" ] || pname=$(getprop ro.vivo.oem.model 2>/dev/null)
+  [ -n "$pname" ] || pname=$(getprop ro.product.model 2>/dev/null)
+  local vdev=$(getprop ro.product.vendor.device 2>/dev/null)
+  local sku=$(getprop ro.boot.product.hardware.sku 2>/dev/null)
+  local soc=$(getprop ro.boot.hardware 2>/dev/null)
+  [ -n "$soc" ] || soc=$(getprop ro.board.platform 2>/dev/null)
+  local osg=$(getprop ro.build.version.originos 2>/dev/null)
+  [ -n "$osg" ] || osg=$(getprop ro.vivo.os.version 2>/dev/null)
+  local cc=$(dumpsys media.camera 2>/dev/null | sed -n 's/.*Number of camera devices: //p' | head -1)
+  cc=${cc:-0}
+
+  local sapk slib sexpect=0
+  sapk=$(stock_apk_resolve 2>/dev/null) \
+    || { echo "!! 定位不到原厂相机 APK（pm path com.android.camera 无结果）"; return 1; }
+  slib=$(stock_libdir_resolve 2>/dev/null)
+  [ -n "$slib" ] && sexpect=$(ls "$slib"/*.so 2>/dev/null | wc -l)
+
+  local hdir=${HAL_CFG_DIR:-/odm/etc/camera} hfmt=""
+  if ls "$hdir"/StreamConfigInfo*.dat >/dev/null 2>&1; then hfmt=dat
+  elif ls "$hdir"/StreamConfigInfo*.xml >/dev/null 2>&1; then hfmt=xml; fi
+
+  local hwmap="" e
+  for e in $(getprop ro.build.expect.hardware 2>/dev/null | tr '|' ' '); do
+    case "$e" in *MA) hwmap="$hwmap ${e%MA}=$e" ;; esac
+  done
+  hwmap=${hwmap# }
+
+  local mk="ro.product.name=$name"
+  [ -n "$vdev" ] && mk="$mk ro.product.vendor.device=$vdev"
+  [ -n "$sku" ] && mk="$mk ro.boot.product.hardware.sku=$sku"
+
+  mkdir -p "$PLUGIN_PROFILES_DIR" || return 1
+  {
+    echo "# 由 cam.sh profile-gen 自动采集生成（$(date '+%Y-%m-%d')）——值全部来自本机实测"
+    echo "# KNOWN_*_MODES 留空：出片实测后人工回填，探针预测不算数"
+    echo "PROFILE_ID=$pid"
+    echo "PROFILE_NAME=\"$pname\""
+    echo "MATCH_KEYS=\"$mk\""
+    echo "SOC=${soc:-}"
+    [ -n "$osg" ] && echo "OS_GEN=$osg"
+    echo "CAM_COUNT=$cc"
+    echo "STOCK_PKG=com.android.camera"
+    echo "STOCK_APK=$sapk"
+    echo "STOCK_LIB_DIR=$slib"
+    echo "STOCK_LIB_EXPECT=$sexpect"
+    echo "STOCK_ACTIVITY=.CameraActivity"
+    echo "HAL_CFG_DIR=$hdir"
+    echo "HAL_CFG_FMT=$hfmt"
+    echo "HAL_CORE_LIB=/vendor/lib64/libvcf_core.so"
+    [ -n "$hwmap" ] && echo "HWBBK_MAP=\"$hwmap\""
+    echo "KNOWN_GOOD_MODES=\"\""
+    echo "KNOWN_BAD_MODES=\"\""
+    echo "GENERIC=0"
+  } > "$out"
+
+  echo "✓ 已生成: $out"
+  echo "  机型   : $pname（$pid）"
+  echo "  匹配键 : $mk"
+  echo "  SoC    : ${soc:-未知}  OS_GEN: ${osg:-未知}  相机数: $cc"
+  echo "  原厂库 : $slib（$sexpect 项）"
+  echo "  HAL    : $hdir 格式=${hfmt:-未识别（可手填 xml 或 dat）}"
+  echo "  HWBBK  : ${hwmap:-未采集到（有快照回放，不影响主路径）}"
+
+  # 自动验证：解析失败或匹配不中 → 删除，不留半套
+  if ! profile_load "$out" || [ -z "${PROFILE_ID:-}" ]; then
+    echo "!! 生成的 profile 解析失败，已删除"; rm -f "$out"; return 1
+  fi
+  if profile_match; then
+    echo "✓ 自动验证通过：MATCH_KEYS 命中本机，profile 已生效"
+    echo "下一步: 导入插件（WebUI「导入插件」/ plugin install）后 cam.sh port <family> 试切；"
+    echo "        probe <family> 可先看 HAL scene 差集（可疑上界）"
+  else
+    echo "!! 自动验证失败：生成的 MATCH_KEYS 未命中本机（异常），已删除"
+    rm -f "$out"; return 1
+  fi
+}
