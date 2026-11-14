@@ -26,6 +26,9 @@
 - **diagnose 双通道归因**：新增 logcat crash 缓冲区扫描（Java 闪退层，tombstone 抓不到），
   内置签名含 `duplicate column name`（高→低版本回落的数据残留 → 处置 `cam.sh clear`，
   PD2419 实测：16.x 相机升级 minivlog 库表后，原厂相机迁移重建同名列失败致录像闪退）
+- **WebUI「清除数据」按钮**：`cam.sh clear` 上屏——确认框写明代价（设置重置、
+  MiniVLog 草稿丢失、DCIM 不受影响）与适用场景（高→低版本数据残留闪退），
+  引导不确定时先「崩溃归因」
 - **WebUI 用户插件「卸载」徽标**：仅用户插件卡显示；激活态引导先回原厂，
   校验 `mode=stock` 成功后才自动 `plugin remove`，杜绝 state 残留指向已删插件
 

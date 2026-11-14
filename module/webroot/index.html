@@ -152,6 +152,7 @@
       <button id="btn-diag" class="btn ghost mini">崩溃归因</button>
       <button id="btn-snapshot" class="btn ghost mini">原厂快照</button>
       <button id="btn-import" class="btn ghost mini">导入插件</button>
+      <button id="btn-clear" class="btn ghost mini">清除数据</button>
       <button id="btn-selfcheck" class="btn ghost mini span2">自检（全量）</button>
     </div>
     <div id="reapplyBox">
@@ -460,6 +461,23 @@ async function doSnapshot() {
   setBusy(false);
 }
 
+// 清除相机数据（cam.sh clear = pm clear + 按当前 state 重铺库）
+// 适用：高→低版本相机数据残留引起的闪退（diagnose 归因 duplicate column）等
+// 代价固定写进确认框：设置重置、MiniVLog 草稿丢失；DCIM 媒体不受影响
+async function doClear() {
+  if (busy) return;
+  if (!confirm('清除相机数据？\n\n• 相机设置全部重置\n• MiniVLog 草稿会丢失\n• DCIM 里的照片视频不受影响\n\n适用：回原厂后录像等闪退（数据残留）、相机状态异常。\n不确定时先点「崩溃归因」看诊断。')) return;
+  setBusy(true); appendLog(''); appendLog('>>> cam.sh clear');
+  overlay('清除相机数据并重铺库…'); await nextPaint();
+  try {
+    const r = await exec('sh ' + MOD + '/cam.sh clear 2>&1', 240);
+    appendLog(r.stdout || ''); overlay('');
+    toast(r.errno === 0 ? '已清除，重新打开相机即用' : '清除异常（errno=' + r.errno + '），见日志');
+    ST = null; await refresh();
+  } catch (e) { appendLog('!! ' + e.message); overlay(''); }
+  setBusy(false);
+}
+
 // 未收录机型的一键 profile 生成（cam.sh profile-gen）：
 // 采集→生成→自动验证三步一体，生成失败不留半套；已有同名拒绝（防覆盖实测回填）
 async function doProfileGen() {
@@ -484,6 +502,7 @@ document.getElementById('btn-diag').onclick    = doDiag;
 document.getElementById('btn-snapshot').onclick = doSnapshot;
 document.getElementById('btn-import').onclick  = doImport;
 document.getElementById('btn-profilegen').onclick = doProfileGen;
+document.getElementById('btn-clear').onclick   = doClear;
 
 async function doImport() {
   if (busy) return;
