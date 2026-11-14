@@ -6,11 +6,11 @@
 
 ## 范围划分
 
-**已全部落地（2026-11-14，v6）**：自包含导出、legacy 合成、`--verified` 背书、CLI + WebUI、
+**已全部落地（2026-11-14，6.0.0）**：自包含导出、legacy 合成、`--verified` 背书、CLI + WebUI、
 busybox zip 探测 + 内置 store-only zip 兜底、同名原子覆盖、
 **SCHEMA=2 profile 随包**（`--with-profile`）、**`--ver` 归档导出**。
 
-原二阶段两项随 v6 提前完成，无遗留搁置项；后续新想法请开 issue 讨论，勿直接扩 schema。
+原二阶段两项随 6.0.0 提前完成，无遗留搁置项；后续新想法请开 issue 讨论，勿直接扩 schema。
 
 ## 接口
 

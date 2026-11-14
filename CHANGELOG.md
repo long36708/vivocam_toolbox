@@ -1,6 +1,6 @@
 # Changelog
 
-## v6（当前）
+## 6.0.0（当前）
 
 - **SCHEMA=2：port zip 可选 `profiles/` 随包**（`plugin export --with-profile` 或手工组包）。
   安装时落到 `/data/adb/vivocam/plugins/profiles/`（profile_select 用户目录优先）；
@@ -28,7 +28,7 @@
 - **WebUI 用户插件「卸载」徽标**：仅用户插件卡显示；激活态引导先回原厂，
   校验 `mode=stock` 成功后才自动 `plugin remove`，杜绝 state 残留指向已删插件
 
-## v5（当前）
+## 5.0.0
 
 插件化架构，机型解绑：
 

@@ -22,7 +22,7 @@ PLUGIN_VERSIONS_DIR=${PLUGIN_VERSIONS_DIR:-$PLUGIN_PORTS_DIR/.versions}
 REPO_CONF=${REPO_CONF:-$PLUGIN_ROOT/repo.conf}
 UPDATES_CACHE=${UPDATES_CACHE:-$PLUGIN_ROOT/.updates}
 
-SCHEMA_SUPPORTED="1 2"          # SCHEMA=2：port zip 可选 profiles/ 随包（v6 起）
+SCHEMA_SUPPORTED="1 2"          # SCHEMA=2：port zip 可选 profiles/ 随包（6.0.0 起）
 MAX_ARCHIVED=2                  # 每家族最多保留的归档版本数
 
 # ---------- 版本比较 ----------

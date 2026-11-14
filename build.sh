@@ -16,6 +16,8 @@ cd "$(dirname "$0")"
 SRC=module
 DIST=dist
 VER=$(grep '^version=' "$SRC/module.prop" | cut -d= -f2)
+echo "$VER" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$' \
+  || { echo "!! 版本号需符合语义化版本 MAJOR.MINOR.PATCH（当前: $VER）"; exit 1; }
 
 [ -f "$SRC/module.prop" ] || { echo "!! 缺 $SRC/module.prop"; exit 1; }
 
