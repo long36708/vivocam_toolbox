@@ -8,14 +8,14 @@
 
 **已全部落地（2026-11-14，6.0.0）**：自包含导出、legacy 合成、`--verified` 背书、CLI + WebUI、
 busybox zip 探测 + 内置 store-only zip 兜底、同名原子覆盖、
-**SCHEMA=2 profile 随包**（`--with-profile`）、**`--ver` 归档导出**。
+**SCHEMA=2 profile 随包**（导出自动附带）、**`--ver` 归档导出**。
 
 原二阶段两项随 6.0.0 提前完成，无遗留搁置项；后续新想法请开 issue 讨论，勿直接扩 schema。
 
 ## 接口
 
 ```
-cam.sh plugin export [family] [--verified] [--with-profile] [--ver <归档版本>]
+cam.sh plugin export [family] [--verified] [--ver <归档版本>]
 ```
 
 - family 缺省取 `state_get port`；`cam.sh stock` 会清空该字段（cam.sh `state_set stock "" …`），
@@ -24,9 +24,10 @@ cam.sh plugin export [family] [--verified] [--with-profile] [--ver <归档版本
 - `--verified`：把**本机 profile id** 追加进导出副本的 `TARGETS`（幂等，已在则跳过）。
   本机 profile 为 `_generic`/空时**拒绝该 flag**（没有诚实可背书的目标机，不写 `unknown`）；
   不带 `--verified` 的普通导出不受影响。
-- `--with-profile`：把本机**用户** profile（`plugins/profiles/<id>.profile`）打进 zip 的
-  `profiles/` 并把 `SCHEMA` 升为 2——接收方未收录该机型时开箱即用。本机 profile 为
-  内置版（模块自带）时自动跳过（内置随包是冗余）。安装端语义见下。
+- **随包 profile（自动）**：本机**用户** profile（`plugins/profiles/<id>.profile`）存在时，
+  自动打进 zip 的 `profiles/` 并把 `SCHEMA` 升为 2——接收方未收录该机型时开箱即用。
+  本机 profile 为内置版（模块自带）时自动跳过：内置随包会在接收方用户目录形成旧副本、
+  遮蔽未来内置更新。安装端语义见下。
 - `--ver <版本>`：从 `.versions/<family>/<版本>/` 归档直接导出历史版本，
   不必先 `plugin use` 切回。归档总带 port.conf，走用户插件同一条组装管线。
 

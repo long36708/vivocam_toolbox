@@ -569,8 +569,8 @@ case "$1" in
         echo "  rollback <family>    回退上一版"
         echo "  remove <family>      移除用户插件"
         echo "  build <镜像> <family> [伪装码]   从解包镜像产出插件"
-        echo "  export <family> [--verified] [--with-profile] [--ver <版本>]"
-        echo "                       把已装插件打成分享 zip（随包 profile / 归档版本，docs/PLUGIN-EXPORT.md）"
+        echo "  export <family> [--verified] [--ver <版本>]"
+        echo "                       把已装插件打成分享 zip（自动随包本机用户 profile，docs/PLUGIN-EXPORT.md）"
         exit 1 ;;
     esac ;;
   ports)     port_status_all ;;

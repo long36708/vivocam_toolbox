@@ -80,7 +80,7 @@ sh $M/cam.sh diagnose              # 最新 tombstone → 已知缺陷自动归�
 sh $M/cam.sh probe [family]        # HAL scene 差集（注意：可疑上界，非崩溃预测）
 
 sh $M/cam.sh plugin list|info|install|check|update|use|rollback|remove|build
-sh $M/cam.sh plugin export <family> [--verified] [--with-profile] [--ver <版本>]
+sh $M/cam.sh plugin export <family> [--verified] [--ver <版本>]
                                                    # 导出已装插件为分享 zip（WebUI 版本卡也有「导出」）
 sh $M/cam.sh addport <固件解包根> <family> [伪装码]
 ```

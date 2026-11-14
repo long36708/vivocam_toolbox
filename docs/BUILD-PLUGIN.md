@@ -11,7 +11,7 @@
 |---|---|---|
 | 装到**自己手机**上用（有解包镜像） | `cam.sh addport <镜像根> <family>` | 建池 + 产插件 + 安装一步完成；`out/` 临时产物自动清理 |
 | 做成 zip **分享给别人**（有解包镜像） | `cam.sh plugin build <镜像根> <family>` | `/data/adb/vivocam/plugins/ports/out/<family>-<ver>/` 目录，自己打 zip |
-| 分享**本机已装**的插件（不需要解包镜像） | `cam.sh plugin export <family> [--verified] [--with-profile] [--ver <版本>]` | 自包含 zip 直接落 `/sdcard/Download/vivocam/`；`--with-profile` 可把本机用户 profile 随包（SCHEMA=2，接收方未收录该机型时开箱即用）；定稿见 [PLUGIN-EXPORT.md](PLUGIN-EXPORT.md) |
+| 分享**本机已装**的插件（不需要解包镜像） | `cam.sh plugin export <family> [--verified] [--ver <版本>]` | 自包含 zip 直接落 `/sdcard/Download/vivocam/`；自动随包本机用户 profile（SCHEMA=2，接收方未收录该机型时开箱即用，内置 profile 自动跳过）；定稿见 [PLUGIN-EXPORT.md](PLUGIN-EXPORT.md) |
 
 前两条路径共用同一套扫描与构建逻辑（`plugin_build`）；区别只是 build 产物装不装、留不留。
 `export` 是第三条路：从已安装的插件（或 legacy 注册目录）反向打包，适合"插件在我手机上

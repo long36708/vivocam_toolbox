@@ -2,12 +2,13 @@
 
 ## 6.0.0（当前）
 
-- **SCHEMA=2：port zip 可选 `profiles/` 随包**（`plugin export --with-profile` 或手工组包）。
+- **SCHEMA=2：port zip 可选 `profiles/` 随包**（`plugin export` 自动附带本机用户 profile；
+  内置 profile 自动跳过；手工组包亦可）。
   安装时落到 `/data/adb/vivocam/plugins/profiles/`（profile_select 用户目录优先）；
   同名保留本地版本（本地可能带实测回填的 KNOWN_*_MODES，随包版不许静默覆盖）；
   坏 profile 只跳过不阻断安装。旧模块收到 SCHEMA=2 包会明确报"请先升级模块"
 - **`plugin export --ver <归档版本>`**：从 `.versions/` 归档直接导出历史版本，
-  不必先 `plugin use` 切回；WebUI 导出确认框加"附带本机 profile"询问（条件显示）
+  不必先 `plugin use` 切回
 
 - **插件导出分享**：`cam.sh plugin export <family> [--verified]` + WebUI 版本卡「导出」按钮。
   把已安装插件打成自包含 zip 落 `/sdcard/Download/vivocam/`（与导入目录一致，可往返验证），

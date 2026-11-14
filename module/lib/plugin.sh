@@ -467,7 +467,7 @@ plugin_build(){
 }
 
 # ---------- 导出（分享）：把已安装插件打成自包含 zip（docs/PLUGIN-EXPORT.md） ----------
-# plugin_export [family] [--verified] [--with-profile] [--ver <归档版本>]
+# plugin_export [family] [--verified] [--ver <归档版本>]
 #
 # 产物 /sdcard/Download/vivocam/<fam>-<ver>.plugin.zip——与 WebUI「导入插件」
 # 的扫描目录一致，导完点一次导入即可往返验证。
@@ -479,12 +479,12 @@ plugin_build(){
 # thin 包对他们不可用，故不提供 thin 导出。
 # 源插件文件永不改动：--verified 的 TARGETS 改写只发生在 staging 副本上。
 plugin_export(){
-  local fam="" verified=0 withprof=0 wantver="" a pend=0
+  local fam="" verified=0 wantver="" a pend=0
   for a in "$@"; do
     if [ "$pend" = "1" ]; then wantver=$a; pend=0; continue; fi
     case "$a" in
       --verified) verified=1 ;;
-      --with-profile) withprof=1 ;;
+      --with-profile) ;;          # 已成默认行为，兼容旧习惯静默接受
       --ver) pend=1 ;;
       *) [ -z "$fam" ] && fam=$a ;;
     esac
@@ -495,7 +495,7 @@ plugin_export(){
   # 导出照样合法，但必须显式给 family）
   [ -n "$fam" ] || fam=$(state_get port)
   [ -n "$fam" ] || {
-    echo "!! 未指定 family 且当前不在移植态（用法: cam.sh plugin export <family> [--verified] [--with-profile] [--ver <版本>]）"
+    echo "!! 未指定 family 且当前不在移植态（用法: cam.sh plugin export <family> [--verified] [--ver <版本>]）"
     return 1
   }
 
@@ -583,31 +583,32 @@ plugin_export(){
     esac
   fi
 
-  # --with-profile：把本机**用户** profile 随包（内置/兜底的不随——模块自带，
-  # 随了也冗余）。随包即 SCHEMA=2；install 端同名保留本地版本，纯增量数据
-  if [ "$withprof" = "1" ]; then
-    case "$pf" in
-      ""|_generic|forced)
-        echo "⚠ 本机无真实 profile（${pf:-无}），--with-profile 跳过" ;;
-      *)
-        if [ -f "$PLUGIN_PROFILES_DIR/$pf.profile" ]; then
-          mkdir -p "$stage/profiles"
-          cp -f "$PLUGIN_PROFILES_DIR/$pf.profile" "$stage/profiles/$pf.profile" \
-            || { rm -rf "$stage"; return 1; }
-          if grep -q '^SCHEMA=' "$stage/port.conf"; then
-            awk -v s="SCHEMA=2" '$1 ~ /^SCHEMA=/{print s; next} {print}' \
-              "$stage/port.conf" > "$stage/port.conf.n" \
-              && mv -f "$stage/port.conf.n" "$stage/port.conf"
-          else
-            echo "SCHEMA=2" >> "$stage/port.conf"
-          fi
-          echo "随包 profile: $pf.profile（SCHEMA=2）"
+  # 随包 profile：自动尝试，不再需要 --with-profile 开关。本机**用户** profile
+  # 存在即随包（SCHEMA=2）——最有价值的场景是未收录机型经 profile-gen 生成后
+  # 分享给同机型用户；内置/兜底 profile 不随（模块自带，随了反而会在接收方
+  # 用户目录形成旧副本、遮蔽未来内置更新）。install 端同名保留本地版本，
+  # 三道兜底让它成为无副作用动作，无需人工决策
+  case "$pf" in
+    ""|_generic|forced)
+      echo "（本机无用户 profile 可随包：${pf:-无}）" ;;
+    *)
+      if [ -f "$PLUGIN_PROFILES_DIR/$pf.profile" ]; then
+        mkdir -p "$stage/profiles"
+        cp -f "$PLUGIN_PROFILES_DIR/$pf.profile" "$stage/profiles/$pf.profile" \
+          || { rm -rf "$stage"; return 1; }
+        if grep -q '^SCHEMA=' "$stage/port.conf"; then
+          awk -v s="SCHEMA=2" '$1 ~ /^SCHEMA=/{print s; next} {print}' \
+            "$stage/port.conf" > "$stage/port.conf.n" \
+            && mv -f "$stage/port.conf.n" "$stage/port.conf"
         else
-          echo "⚠ 本机 profile $pf 是模块内置版（无用户插件副本），不随包"
+          echo "SCHEMA=2" >> "$stage/port.conf"
         fi
-        ;;
-    esac
-  fi
+        echo "随包 profile: $pf.profile（SCHEMA=2）"
+      else
+        echo "（本机 profile $pf 为模块内置版，不随包）"
+      fi
+      ;;
+  esac
 
   cp -f "$src/names.lst" "$stage/names.lst" || { rm -rf "$stage"; return 1; }
   ln -f "$src/VivoCamera.apk" "$stage/VivoCamera.apk" 2>/dev/null \
