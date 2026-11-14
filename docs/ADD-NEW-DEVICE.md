@@ -117,6 +117,7 @@ sh cam.sh stock                # 一键回原厂（属性回放快照 + 原厂�
 | `moduleZoomConfig is null` | 把插件 `port.conf` 的 `TARGET_PROJECT` 改为 `plugin info` 里 "MEAT" 列表中的码（可多试几个），重装/重切 |
 | `ExtendCap`/`getOutputHALNodeBufferInfos` | HAL 侧缺陷，换拍摄模式逐个测；记录可用模式矩阵 |
 | `Cannot get correct stream id` | HAL 代际不匹配，该包大概率不可用，换包 |
+| `duplicate column name`（Java 闪退，回原厂后） | 高→低版本数据残留：`cam.sh clear`（设置与草稿会清，DCIM 不动） |
 
 ## 5. 成功之后
 

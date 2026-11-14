@@ -89,13 +89,68 @@ probe_target(){
 }
 
 # ---------- 崩溃归因 ----------
-# 扫最新 tombstone，按已知签名归类
+# 双通道：Java 闪退看 logcat crash 缓冲区（App 直接退出，tombstone 抓不到——
+# 实测案例：高→低版本回落后原厂相机录像闪退，根因是 minivlog DB 列冲突），
+# native/HAL 看 tombstone。两路都归因输出：用户主诉的闪退通常在前者，
+# 但 HAL 崩溃只有 tombstone 有记录——别只看一边。
+
+# 最近一次 com.android.camera 的 FATAL：时间戳\t异常首行\t栈顶帧×3
+java_fatal_latest(){
+  logcat -b crash -d 2>/dev/null | awk '
+    /FATAL EXCEPTION/ { ts = $1 " " $2; proc = ""; exc = ""; n = 0 }
+    ts != "" && match($0, /Process: [A-Za-z0-9._]+/) { proc = substr($0, RSTART + 9, RLENGTH - 9) }
+    ts != "" && proc == "com.android.camera" && exc == "" && $0 !~ /Process: / \
+      && match($0, /E AndroidRuntime: [A-Za-z]/) { exc = substr($0, RSTART + 18) }
+    ts != "" && exc != "" && n < 3 && match($0, /[ \t]at [a-zA-Z]/) { fr[n++] = substr($0, RSTART + 1) }
+    END { if (ts != "" && exc != "") printf "%s\t%s\t%s\t%s\t%s", ts, exc, fr[0], fr[1], fr[2] }'
+}
+
+# Java 闪退归因（$1=java_fatal_latest 的输出）
+java_fatal_show(){
+  local blk=$1
+  local ts=$(printf '%s\n' "$blk" | cut -f1)
+  local exc=$(printf '%s\n' "$blk" | cut -f2)
+  local f1=$(printf '%s\n' "$blk" | cut -f3)
+  local sig verdict advice
+  case "$exc" in
+    *"duplicate column name"*)
+      sig="minivlog DB duplicate column"
+      verdict="高→低版本相机数据残留：16.x 移植相机已升级库表，原厂相机迁移重建同名列失败（PD2419 实测 2026-11）"
+      advice="cam.sh clear 清相机数据——设置会重置、MiniVLog 草稿会丢；DCIM 媒体不受影响" ;;
+    *configMeatZoomSceneConfig*)
+      sig="configMeatZoomSceneConfig is null"
+      verdict="伪装码在 APK 内无 MEAT 子类（docs/FINDINGS.md §6）"
+      advice="把移植包 port.conf 的 TARGET_PROJECT 改为 APK 实际的 \$\$MEAT 码后重切" ;;
+    *)
+      echo "时间   : $ts"
+      echo "异常   : $exc"
+      [ -n "$f1" ] && echo "栈顶   : $f1"
+      echo "签名   : 未收录"
+      echo "处置   : 把异常与栈顶反馈到仓库 issue；疑似数据残留可先试 cam.sh clear"
+      return 0 ;;
+  esac
+  echo "时间   : $ts"
+  echo "签名   : $sig"
+  echo "归因   : $verdict"
+  echo "处置   : $advice"
+}
+
 diagnose(){
+  echo "=== Java 闪退（logcat crash 缓冲区）==="
+  local blk
+  blk=$(java_fatal_latest)
+  if [ -n "$blk" ]; then
+    java_fatal_show "$blk"
+  else
+    echo "（无 com.android.camera 闪退记录）"
+  fi
+  echo
+  echo "=== tombstone（native / HAL）==="
   local td=/data/tombstones
-  [ -d "$td" ] || { echo "无 $td"; return 1; }
+  [ -d "$td" ] || { echo "无 $td"; return 0; }
   local f
   f=$(ls -t "$td"/tombstone_* 2>/dev/null | head -1)
-  [ -n "$f" ] || { echo "无 tombstone"; return 1; }
+  [ -n "$f" ] || { echo "无 tombstone"; return 0; }
   echo "最新: $f ($(stat -c %y "$f" 2>/dev/null | cut -d. -f1))"
   echo
 

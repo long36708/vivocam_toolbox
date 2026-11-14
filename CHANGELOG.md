@@ -1,6 +1,13 @@
 # Changelog
 
-## v6（未发布）
+## v6（当前）
+
+- **SCHEMA=2：port zip 可选 `profiles/` 随包**（`plugin export --with-profile` 或手工组包）。
+  安装时落到 `/data/adb/vivocam/plugins/profiles/`（profile_select 用户目录优先）；
+  同名保留本地版本（本地可能带实测回填的 KNOWN_*_MODES，随包版不许静默覆盖）；
+  坏 profile 只跳过不阻断安装。旧模块收到 SCHEMA=2 包会明确报"请先升级模块"
+- **`plugin export --ver <归档版本>`**：从 `.versions/` 归档直接导出历史版本，
+  不必先 `plugin use` 切回；WebUI 导出确认框加"附带本机 profile"询问（条件显示）
 
 - **插件导出分享**：`cam.sh plugin export <family> [--verified]` + WebUI 版本卡「导出」按钮。
   把已安装插件打成自包含 zip 落 `/sdcard/Download/vivocam/`（与导入目录一致，可往返验证），
@@ -9,7 +16,10 @@
   库池缺库即拒绝导出并列缺失名；产物先过 `plugin_validate` 六步自检再打包。
   **store-only zip 兜底**（真机实测 KSU/Magisk 构建 busybox 无 zip applet）：CRC 取自
   gzip 尾部 8 字节（RFC 1952），头部 hex 拼接 + `xxd -r -p` 还原，零依赖产 zip。
-  设计定稿见 `docs/PLUGIN-EXPORT.md`。二阶段搁置：SCHEMA=2 profile 随包、`--ver` 归档导出
+  设计定稿见 `docs/PLUGIN-EXPORT.md`。原二阶段两项已随本版落地（见上两条）
+- **diagnose 双通道归因**：新增 logcat crash 缓冲区扫描（Java 闪退层，tombstone 抓不到），
+  内置签名含 `duplicate column name`（高→低版本回落的数据残留 → 处置 `cam.sh clear`，
+  PD2419 实测：16.x 相机升级 minivlog 库表后，原厂相机迁移重建同名列失败致录像闪退）
 - **WebUI 用户插件「卸载」徽标**：仅用户插件卡显示；激活态引导先回原厂，
   校验 `mode=stock` 成功后才自动 `plugin remove`，杜绝 state 残留指向已删插件
 

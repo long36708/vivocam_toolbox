@@ -37,6 +37,10 @@
 > 判据铁律：**"可用" = 实机出片**，不是 App 能启动。各移植包已知限制见
 > `cam.sh plugin info <family>` 的 `KNOWN_LIMITS`；已知模式差异（如 X500PM 默认拍照模式
 > 必崩 HAL、而「原生光影」可出片）说明见 [FINDINGS.md §8/§11](docs/FINDINGS.md)。
+>
+> **回原厂后录像等功能闪退**？= 高→低版本相机数据残留（16.x 已升级库表，原厂相机迁移
+> 失败），`cam.sh clear` 重置相机数据即可（设置与草稿会清，DCIM 媒体不受影响）；
+> `cam.sh diagnose` 会自动归因。
 
 ## 环境要求
 
@@ -76,7 +80,8 @@ sh $M/cam.sh diagnose              # 最新 tombstone → 已知缺陷自动归�
 sh $M/cam.sh probe [family]        # HAL scene 差集（注意：可疑上界，非崩溃预测）
 
 sh $M/cam.sh plugin list|info|install|check|update|use|rollback|remove|build
-sh $M/cam.sh plugin export <family> [--verified]   # 导出已装插件为分享 zip（WebUI 版本卡也有「导出」）
+sh $M/cam.sh plugin export <family> [--verified] [--with-profile] [--ver <版本>]
+                                                   # 导出已装插件为分享 zip（WebUI 版本卡也有「导出」）
 sh $M/cam.sh addport <固件解包根> <family> [伪装码]
 ```
 

@@ -15,7 +15,7 @@
 #   sh cam.sh pool [migrate]     库池状态 / 从模块 backup 迁移
 #   sh cam.sh backup             原厂库自备份（首次或原厂更新后）
 #   sh cam.sh probe [port-id]    HAL 兼容性探针
-#   sh cam.sh diagnose           最新 tombstone 归因
+#   sh cam.sh diagnose           崩溃归因（Java 闪退 + tombstone 双通道）
 #   sh cam.sh selfcheck          全量自检
 #   sh cam.sh migrate            从旧版（硬编码布局）迁移
 #   sh cam.sh force-port <id>    对未识别机型强制应用（跳过 profile 检查）
@@ -568,7 +568,8 @@ case "$1" in
         echo "  rollback <family>    回退上一版"
         echo "  remove <family>      移除用户插件"
         echo "  build <镜像> <family> [伪装码]   从解包镜像产出插件"
-        echo "  export <family> [--verified]     把已装插件打成分享 zip（docs/PLUGIN-EXPORT.md）"
+        echo "  export <family> [--verified] [--with-profile] [--ver <版本>]"
+        echo "                       把已装插件打成分享 zip（随包 profile / 归档版本，docs/PLUGIN-EXPORT.md）"
         exit 1 ;;
     esac ;;
   ports)     port_status_all ;;

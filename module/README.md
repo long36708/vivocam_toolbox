@@ -11,6 +11,8 @@ sh .../cam.sh addport <固件解包根> <family>   # 从镜像生成并安装移
 ```
 
 - 切换约 15–20 秒，免重启、不清数据；异常时 `clear`，重启后属性失效点 WebUI「重新应用属性」
+- **回原厂后录像等闪退** = 高→低版本相机数据残留（16.x 已升级库表，原厂相机迁移失败）→
+  `clear` 重置相机数据（设置与 MiniVLog 草稿会清，DCIM 媒体不受影响）；`diagnose` 可自动归因
 - 运行期数据（插件/库池/原厂备份/快照）在 `/data/adb/vivocam/`，升级/重装模块不丢
 - 本模块不修改 `/vendor`、`/system`；卸载时 `uninstall.sh` 回放原厂属性
 - 架构与限制：见仓库 `docs/ARCHITECTURE.md`、`docs/FINDINGS.md`
