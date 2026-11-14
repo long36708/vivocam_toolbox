@@ -6,20 +6,16 @@
 
 ## 范围划分
 
-**一阶段（本版实现）**：自包含导出、legacy 合成、`--verified` 背书、CLI + WebUI、
-busybox zip 探测 + **内置 store-only zip 兜底**、同名原子覆盖。
+**已全部落地（2026-11-14，v6）**：自包含导出、legacy 合成、`--verified` 背书、CLI + WebUI、
+busybox zip 探测 + 内置 store-only zip 兜底、同名原子覆盖、
+**SCHEMA=2 profile 随包**（`--with-profile`）、**`--ver` 归档导出**。
 
-**二阶段（明确搁置，勿在 issue 里催）**：
-
-| 搁置项 | 一句话理由 |
-|---|---|
-| SCHEMA=2 profile 随包（zip 内可选 `profiles/`） | 动校验序 + conf 白名单 + 双 schema 兼容，改动面翻倍；同机型用户开箱即用靠模块内置 profile 已覆盖大半 |
-| `--ver` 从 `.versions/` 归档导出历史版本 | 要发旧版先 `plugin use` 切回再导，省一条代码路径 |
+原二阶段两项随 v6 提前完成，无遗留搁置项；后续新想法请开 issue 讨论，勿直接扩 schema。
 
 ## 接口
 
 ```
-cam.sh plugin export [family] [--verified]     # --verified 位置任意
+cam.sh plugin export [family] [--verified] [--with-profile] [--ver <归档版本>]
 ```
 
 - family 缺省取 `state_get port`；`cam.sh stock` 会清空该字段（cam.sh `state_set stock "" …`），
@@ -28,6 +24,11 @@ cam.sh plugin export [family] [--verified]     # --verified 位置任意
 - `--verified`：把**本机 profile id** 追加进导出副本的 `TARGETS`（幂等，已在则跳过）。
   本机 profile 为 `_generic`/空时**拒绝该 flag**（没有诚实可背书的目标机，不写 `unknown`）；
   不带 `--verified` 的普通导出不受影响。
+- `--with-profile`：把本机**用户** profile（`plugins/profiles/<id>.profile`）打进 zip 的
+  `profiles/` 并把 `SCHEMA` 升为 2——接收方未收录该机型时开箱即用。本机 profile 为
+  内置版（模块自带）时自动跳过（内置随包是冗余）。安装端语义见下。
+- `--ver <版本>`：从 `.versions/<family>/<版本>/` 归档直接导出历史版本，
+  不必先 `plugin use` 切回。归档总带 port.conf，走用户插件同一条组装管线。
 
 ## 导出流水线
 

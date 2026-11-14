@@ -22,7 +22,7 @@ PLUGIN_VERSIONS_DIR=${PLUGIN_VERSIONS_DIR:-$PLUGIN_PORTS_DIR/.versions}
 REPO_CONF=${REPO_CONF:-$PLUGIN_ROOT/repo.conf}
 UPDATES_CACHE=${UPDATES_CACHE:-$PLUGIN_ROOT/.updates}
 
-SCHEMA_SUPPORTED=1
+SCHEMA_SUPPORTED="1 2"          # SCHEMA=2：port zip 可选 profiles/ 随包（v6 起）
 MAX_ARCHIVED=2                  # 每家族最多保留的归档版本数
 
 # ---------- 版本比较 ----------
@@ -76,7 +76,10 @@ plugin_validate(){
 
   [ -n "${P_PORT_ID:-}" ]       || { echo "缺 PORT_ID"; return 1; }
   [ -n "${P_TARGET_PROJECT:-}" ] || { echo "缺 TARGET_PROJECT"; return 1; }
-  [ "${P_SCHEMA:-1}" = "$SCHEMA_SUPPORTED" ] || { echo "SCHEMA ${P_SCHEMA:-?} 不受支持（本模块支持 $SCHEMA_SUPPORTED）"; return 1; }
+  case "${P_SCHEMA:-1}" in
+    1|2) ;;
+    *) echo "SCHEMA ${P_SCHEMA:-?} 不受支持（本模块支持 $SCHEMA_SUPPORTED），请先升级模块"; return 1 ;;
+  esac
 
   # 模块版本要求
   local mv=$(module_version_code)
@@ -163,6 +166,31 @@ plugin_install(){
     done
   elif [ "$thin" != "--thin" ]; then
     echo "（插件未带 lib/，依赖已有库池：$(ls "$LIBPOOL"/*.so 2>/dev/null | wc -l) 个内容）"
+  fi
+
+  # SCHEMA=2 可选随包 profiles/ → 落用户 profile 扩展位（profile_select 用户目录优先）。
+  # 同名保留本地版本：本地可能带实测回填的 KNOWN_GOOD_MODES，随包版不许静默覆盖；
+  # 坏 profile 只跳过不阻断——插件是纯数据，最坏情况是少装一个 profile
+  if [ "${P_SCHEMA:-1}" = "2" ] && [ -d "$stage/profiles" ]; then
+    mkdir -p "$PLUGIN_PROFILES_DIR"
+    local pf pfn
+    for pf in "$stage"/profiles/*.profile; do
+      [ -f "$pf" ] || continue
+      pfn=${pf##*/}
+      case "${pfn%.profile}" in
+        *[!A-Za-z0-9_-]*|"") echo "⚠ 跳过非法 profile 文件名: $pfn"; continue ;;
+      esac
+      if ! profile_load "$pf" || [ -z "${PROFILE_ID:-}" ]; then
+        echo "⚠ 跳过无法解析的 profile: $pfn"; continue
+      fi
+      if [ -e "$PLUGIN_PROFILES_DIR/$pfn" ]; then
+        echo "⚠ profile $pfn 已存在，保留本地版本（随包版未覆盖）"
+      else
+        cp -f "$pf" "$PLUGIN_PROFILES_DIR/$pfn" \
+          && echo "✓ 随包 profile 安装: $pfn（$(conf_get "$pf" '^(PROFILE_ID)$' PROFILE_ID 2>/dev/null)）"
+      fi
+    done
+    rm -rf "$stage/profiles"    # 随包数据已落位，不进活跃插件目录
   fi
 
   # 归档旧活跃版本（原子替换：先挪旧、再上新的，失败回滚）
@@ -439,7 +467,7 @@ plugin_build(){
 }
 
 # ---------- 导出（分享）：把已安装插件打成自包含 zip（docs/PLUGIN-EXPORT.md） ----------
-# plugin_export [family] [--verified]
+# plugin_export [family] [--verified] [--with-profile] [--ver <归档版本>]
 #
 # 产物 /sdcard/Download/vivocam/<fam>-<ver>.plugin.zip——与 WebUI「导入插件」
 # 的扫描目录一致，导完点一次导入即可往返验证。
@@ -451,19 +479,23 @@ plugin_build(){
 # thin 包对他们不可用，故不提供 thin 导出。
 # 源插件文件永不改动：--verified 的 TARGETS 改写只发生在 staging 副本上。
 plugin_export(){
-  local fam="" verified=0 a
+  local fam="" verified=0 withprof=0 wantver="" a pend=0
   for a in "$@"; do
+    if [ "$pend" = "1" ]; then wantver=$a; pend=0; continue; fi
     case "$a" in
       --verified) verified=1 ;;
+      --with-profile) withprof=1 ;;
+      --ver) pend=1 ;;
       *) [ -z "$fam" ] && fam=$a ;;
     esac
   done
+  [ "$pend" = "0" ] || { echo "!! --ver 后面要跟版本号（cam.sh plugin list 可看归档）"; return 1; }
 
   # family：显式参数 > state 的 port 字段（cam.sh stock 会清空它——原厂态下
   # 导出照样合法，但必须显式给 family）
   [ -n "$fam" ] || fam=$(state_get port)
   [ -n "$fam" ] || {
-    echo "!! 未指定 family 且当前不在移植态（用法: cam.sh plugin export <family> [--verified]）"
+    echo "!! 未指定 family 且当前不在移植态（用法: cam.sh plugin export <family> [--verified] [--with-profile] [--ver <版本>]）"
     return 1
   }
 
@@ -479,18 +511,24 @@ plugin_export(){
     esac
   fi
 
-  # 来源：用户插件（有 port.conf）> legacy 注册目录（仅 APK+lst，需合成 conf）
-  local src="$PLUGIN_PORTS_DIR/$fam" legacy=0
-  if [ -f "$src/port.conf" ] && [ -f "$src/VivoCamera.apk" ]; then
-    :
+  # 来源：--ver 归档 > 用户插件（有 port.conf）> legacy 注册目录（需合成 conf）。
+  # 伪装值没有独立的运行态存储（props.sh 只存原厂快照），conf/描述符里的
+  # TARGET_PROJECT 就是本机实际在跑的码——直接继承
+  local src legacy=0
+  if [ -n "$wantver" ]; then
+    src="$PLUGIN_VERSIONS_DIR/$fam/$wantver"
+    [ -f "$src/port.conf" ] \
+      || { echo "!! 没有归档版本 $fam $wantver（cam.sh plugin list 查看）"; return 1; }
+    port_load "$src/port.conf" || { echo "!! 归档 port.conf 读取失败"; return 1; }
+  elif [ -f "$PLUGIN_PORTS_DIR/$fam/port.conf" ] && [ -f "$PLUGIN_PORTS_DIR/$fam/VivoCamera.apk" ]; then
+    src="$PLUGIN_PORTS_DIR/$fam"
+    port_load "$src/port.conf" || { echo "!! port.conf 读取失败"; return 1; }
   elif [ -f "$PORT_ROOT/$fam/VivoCamera.apk" ] && [ -f "$PORT_ROOT/$fam/names.lst" ]; then
     src="$PORT_ROOT/$fam"; legacy=1
+    port_find "$fam" || { echo "!! 找不到 $fam 的描述（port.conf/.port）"; return 1; }
   else
     echo "!! 插件未安装: $fam（cam.sh ports 查看）"; return 1
   fi
-  # 装载 PORT_* 描述字段。伪装值没有独立的运行态存储（props.sh 只存原厂快照），
-  # 描述符/插件 conf 里的 TARGET_PROJECT 就是本机实际在跑的码——直接继承
-  port_find "$fam" || { echo "!! 找不到 $fam 的描述（port.conf/.port）"; return 1; }
 
   local stage="$PLUGIN_PORTS_DIR/.export.$$"
   rm -rf "$stage"; mkdir -p "$stage/lib"
@@ -545,6 +583,32 @@ plugin_export(){
     esac
   fi
 
+  # --with-profile：把本机**用户** profile 随包（内置/兜底的不随——模块自带，
+  # 随了也冗余）。随包即 SCHEMA=2；install 端同名保留本地版本，纯增量数据
+  if [ "$withprof" = "1" ]; then
+    case "$pf" in
+      ""|_generic|forced)
+        echo "⚠ 本机无真实 profile（${pf:-无}），--with-profile 跳过" ;;
+      *)
+        if [ -f "$PLUGIN_PROFILES_DIR/$pf.profile" ]; then
+          mkdir -p "$stage/profiles"
+          cp -f "$PLUGIN_PROFILES_DIR/$pf.profile" "$stage/profiles/$pf.profile" \
+            || { rm -rf "$stage"; return 1; }
+          if grep -q '^SCHEMA=' "$stage/port.conf"; then
+            awk -v s="SCHEMA=2" '$1 ~ /^SCHEMA=/{print s; next} {print}' \
+              "$stage/port.conf" > "$stage/port.conf.n" \
+              && mv -f "$stage/port.conf.n" "$stage/port.conf"
+          else
+            echo "SCHEMA=2" >> "$stage/port.conf"
+          fi
+          echo "随包 profile: $pf.profile（SCHEMA=2）"
+        else
+          echo "⚠ 本机 profile $pf 是模块内置版（无用户插件副本），不随包"
+        fi
+        ;;
+    esac
+  fi
+
   cp -f "$src/names.lst" "$stage/names.lst" || { rm -rf "$stage"; return 1; }
   ln -f "$src/VivoCamera.apk" "$stage/VivoCamera.apk" 2>/dev/null \
     || cp -f "$src/VivoCamera.apk" "$stage/VivoCamera.apk" \
@@ -591,15 +655,18 @@ plugin_export(){
   rm -f "$out.part"
 
   # 打包：优先 busybox zip；真机实测 KSU 的 Magisk 构建 busybox 无打包 applet
-  #（358 个 applet 里 zip 系只有解包三件套），此时落到内置 store-only 打包器
+  #（358 个 applet 里 zip 系只有解包三件套），此时落到内置 store-only 打包器。
+  # 随包 profile 时把 profiles/ 也列进条目（$zents 故意不加引号按词展开）
+  local zents="port.conf names.lst VivoCamera.apk lib"
+  [ -d "$stage/profiles" ] && zents="$zents profiles"
   local zipped=0
   if ! busybox zip 2>&1 | head -2 | grep -q "applet not found"; then
-    ( cd "$stage" && busybox zip -q -r "$out.part" port.conf names.lst VivoCamera.apk lib ) \
+    ( cd "$stage" && busybox zip -q -r "$out.part" $zents ) \
       && zipped=1
   fi
   if [ "$zipped" = "0" ]; then
     echo "busybox 无 zip applet，改用内置 store-only 打包器（lib/zip.sh）..."
-    zip_store "$out.part" "$stage" port.conf names.lst VivoCamera.apk lib && zipped=1
+    zip_store "$out.part" "$stage" $zents && zipped=1
   fi
   if [ "$zipped" != "1" ]; then
     echo "!! zip 打包失败"; rm -f "$out.part"; rm -rf "$stage"; return 1

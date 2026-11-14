@@ -503,16 +503,19 @@ async function doPlugin(args) {
 }
 
 // 导出插件为分享 zip（docs/PLUGIN-EXPORT.md）
-// 背书（--verified）只在本机 profile 真实匹配时才询问——
-// “已在本机实机出片”的确认责任交给这一步的活人点击
+// 背书（--verified）与随包 profile（--with-profile）只在本机 profile 真实匹配时才询问——
+// 诚实性（实机出片背书）与增量性（profile 同名不覆盖）的责任都交给活人点击
 async function doExport(id, sizeMb) {
   if (busy) return;
   if (!confirm('导出插件 ' + id + ' 为分享包？\nzip 写入 /sdcard/Download/vivocam/（约 ' + (sizeMb || 500) + 'MB）\n导出后可用「导入插件」往返验证。')) return;
   const p = (ST && ST.profile) || '';
   let flag = '';
-  if (p && p !== '_generic' && p !== 'forced'
-      && confirm('要背书吗？\n确定 = 声明「已在本机实机出片」，把本机机型 ' + p + ' 写入导出包 TARGETS\n取消 = 不背书，仅导出'))
-    flag = ' --verified';
+  if (p && p !== '_generic' && p !== 'forced') {
+    if (confirm('要背书吗？\n确定 = 声明「已在本机实机出片」，把本机机型 ' + p + ' 写入导出包 TARGETS\n取消 = 不背书，仅导出'))
+      flag += ' --verified';
+    if (confirm('附带本机 profile（' + p + '.profile）随包？\n接收方未收录该机型时开箱即用；本机若为模块内置 profile，导出时自动跳过'))
+      flag += ' --with-profile';
+  }
   setBusy(true); appendLog(''); appendLog('>>> cam.sh plugin export ' + id + flag);
   overlay('导出中（拷贝+打包，约 1–2 分钟）…'); await nextPaint();
   try {
