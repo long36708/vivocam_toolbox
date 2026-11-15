@@ -77,6 +77,26 @@ state_set(){ # $1=mode $2=port $3=profile
 set_props(){ props_spoof "$1"; }
 clear_props(){ props_restore; }
 
+# 属性只对"之后新起的进程"生效：相机 App 会被 force-stop，但 camerahalserver/
+# cameraserver 是常驻服务，不重启会继续按旧伪装码初始化。实测：切回原厂后原厂
+# 相机闪退（HAL 侧 SATController 崩）、硬重启才恢复。kill 后 init 自动拉起，
+# 新进程按当前属性初始化——这是"切完不用重启"的最后一块拼图。
+camera_services_restart(){
+  killall cameraserver camerahalserver 2>/dev/null
+  sleep 1
+}
+
+# 切换失败回滚时把属性也恢复到切换前状态（配套 state 回滚）：
+# 否则 state=port 但属性=stock（或反之），下次打开相机就是 MEAT 错位闪退
+resume_props_after_rollback(){ # $1=mode $2=port
+  if [ "$1" = "port" ] && [ -n "$2" ] && port_find "$2" >/dev/null 2>&1; then
+    set_props "${TARGET_PROJECT:-$SRC_PROJECT}"
+  else
+    clear_props
+  fi
+  camera_services_restart
+}
+
 # ---------- 铺库 ----------
 # 与 service.sh 串行化：两边都会 rm -rf 目标 lib 目录再重铺，并发会互相
 # 删掉对方刚写的文件（实测出现过 106/108 这种非期望值）。
@@ -201,15 +221,21 @@ switch_stock(){
   log "props: model.bbk=$(getprop ro.product.model.bbk)"
 
   am force-stop "${STOCK_PKG:-com.android.camera}" 2>/dev/null; sleep 1
+  camera_services_restart
   local WANT=${STOCK_VER:-}
   if [ -n "$WANT" ] && [ "$(cur_ver)" = "$WANT" ]; then
     log "已是 $WANT，跳过安装"
   else
     local sapk=$(stock_apk_resolve) || { log "!! 找不到原厂相机 APK（profile 与自动探测均失败）"; return 1; }
     [ "$sapk" = "${STOCK_APK:-}" ] || log "原厂 APK 自动定位: $sapk"
-    # 安装失败要回滚 state：否则相机仍是移植版，state 却已写成 stock，
-    # info/守护进程都会按原厂铺库（旧 WebUI 卸载守卫正是被这个骗过）
-    install_apk "$sapk" || { state_set "$prevm" "$prevp" "$PROFILE_ID"; return 1; }
+    # 安装失败要回滚 state + 属性：否则相机仍是移植版，state 却已写成 stock，
+    # info/守护进程都会按原厂铺库（旧 WebUI 卸载守卫正是被这个骗过）；
+    # 属性不恢复则下次打开移植相机会 MEAT 错位
+    install_apk "$sapk" || {
+      state_set "$prevm" "$prevp" "$PROFILE_ID"
+      resume_props_after_rollback "$prevm" "$prevp"
+      return 1
+    }
   fi
   fill_stock
   log "完成: $(cur_ver)（数据未清除，设置保留）"
@@ -246,10 +272,15 @@ switch_port(){ # $1=port id 或别名
   log "props: model.bbk=$(getprop ro.product.model.bbk)"
 
   am force-stop "${STOCK_PKG:-com.android.camera}" 2>/dev/null; sleep 1
+  camera_services_restart
   if [ "$(cur_ver)" = "$APK_VER" ]; then
     log "已是 $APK_VER，跳过安装"
   else
-    install_apk "$(port_apk "$pid")" || { state_set "$prevm" "$prevp" "$PROFILE_ID"; return 1; }
+    install_apk "$(port_apk "$pid")" || {
+      state_set "$prevm" "$prevp" "$PROFILE_ID"
+      resume_props_after_rollback "$prevm" "$prevp"
+      return 1
+    }
   fi
   fill_port "$pid"
   log "完成: $(cur_ver)，打开相机即可使用（数据未清除，设置保留）"

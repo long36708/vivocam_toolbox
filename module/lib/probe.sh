@@ -126,8 +126,8 @@ java_fatal_show(){
       advice="cam.sh clear 清相机数据——设置会重置、MiniVLog 草稿会丢；DCIM 媒体不受影响" ;;
     *configMeatZoomSceneConfig*)
       sig="configMeatZoomSceneConfig is null"
-      verdict="伪装码在 APK 内无 MEAT 子类（docs/FINDINGS.md §6）"
-      advice="把移植包 port.conf 的 TARGET_PROJECT 改为 APK 实际的 \$\$MEAT 码后重切" ;;
+      verdict="伪装码与已装 APK 的 MEAT 不匹配（docs/FINDINGS.md §6）——插件码错，或切换失败导致属性/APK 错位（旧版 state 不回滚）"
+      advice="先核对三方一致：已装版本=cam.sh status 的版本、state.port=cam.sh info 的 curport、伪装码∈cam.sh plugin info 的 MEAT 列表。不一致多为切换失败残留：cam.sh stock 或 cam.sh port <family> 重切（6.0.2 起失败会回滚 state）；都一致仍崩则改 TARGET_PROJECT 重装" ;;
     *"Unable to instantiate application"*)
       sig="CameraApp 实例化失败"
       verdict="App 初始化阶段反射失败，根因看下方链因行（PD2419 曾见重启后首开一过性：18:10 崩、18:13 起正常）"
