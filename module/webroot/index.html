@@ -382,17 +382,19 @@ async function refresh() {
 }
 
 async function doSwitch(key) {
-  if (busy) return;
+  if (busy) return false;
   setBusy(true);
   appendLog('');
   appendLog('>>> sh ' + MOD + '/cam.sh ' + key + ' 开始');
   overlay('切换中，请稍候…');
   await nextPaint();
+  let ok = false;
   try {
     const r = await exec('sh ' + MOD + '/cam.sh ' + key, 240);
     appendLog(r.stdout || '');
     if (r.stderr) appendLog(r.stderr);
-    if (r.errno === 0 && /完成/.test(r.stdout)) {
+    ok = r.errno === 0 && /完成/.test(r.stdout);
+    if (ok) {
       overlay(''); toast('切换完成，直接打开相机即可');
     } else {
       overlay(''); toast('切换异常（errno=' + r.errno + '），见下方日志');
@@ -401,6 +403,7 @@ async function doSwitch(key) {
     appendLog('!! ' + e.message); overlay(''); toast('执行失败: ' + e.message);
   }
   setBusy(false);
+  return ok;
 }
 
 async function doReapply() {
@@ -576,12 +579,12 @@ async function doRemove(id) {
   const active = ST && ST.mode === 'port' && ST.curport === id;
   if (active) {
     if (!confirm('插件 ' + id + ' 正在使用，需先回原厂才能卸载。\n现在切回原厂（约 15–20 秒），成功后自动卸载？')) return;
-    await doSwitch('stock');
-    const r0 = await exec('sh ' + MOD + '/cam.sh info 2>/dev/null', 30);
-    const st0 = parseKV(r0.stdout || '');
-    if (st0.mode !== 'stock') {
-      ST = st0; renderStatus(st0);
-      toast('未回到原厂，卸载中止（见日志）'); return;
+    // 用切换命令的真实结果判定：switch_stock 在安装前就写 state=stock，
+    // 安装失败时 info 仍报 mode=stock（旧守卫会被骗），必须看"完成"输出
+    const okStock = await doSwitch('stock');
+    if (!okStock) {
+      ST = null; await refresh();
+      toast('回原厂未完成，卸载中止（见日志）'); return;
     }
     appendLog('>>> 已回原厂，继续卸载 ' + id);
     doPlugin('remove ' + id);

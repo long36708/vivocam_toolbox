@@ -154,15 +154,18 @@ plugin_install(){
 
   mkdir -p "$PLUGIN_PORTS_DIR" "$PLUGIN_VERSIONS_DIR/$fam"
 
-  # 库入池（自包含模式）：把 lib/*.so 按 md5 合并进内容寻址池
+  # 库入池（自包含模式）：必须同时拷文件体 + 登记"名字→md5"索引。
+  # ★ 6.0.2 修复（分享场景实测）：此前只按 md5 拷体，不写 .names——
+  #   导出方本机因 addport 从镜像建池时已有索引而不受影响，全新接收方
+  #   .names 为空 → pool_fill 按 names.lst 一个都查不到 → lib=0 →
+  #   相机启动 dlopen "libmmkv.so" 失败（UnsatisfiedLinkError）。
   if [ -d "$stage/lib" ]; then
     echo "合并库集入库池..."
-    local so m
+    pool_init
+    local so
     for so in "$stage"/lib/*.so; do
       [ -f "$so" ] || continue
-      m=$(md5sum "$so" 2>/dev/null | cut -d' ' -f1)
-      [ -n "$m" ] || continue
-      [ -f "$LIBPOOL/$m.so" ] || cp -f "$so" "$LIBPOOL/$m.so" 2>/dev/null
+      pool_add "$so" "${so##*/}"
     done
   elif [ "$thin" != "--thin" ]; then
     echo "（插件未带 lib/，依赖已有库池：$(ls "$LIBPOOL"/*.so 2>/dev/null | wc -l) 个内容）"

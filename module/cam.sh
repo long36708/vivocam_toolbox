@@ -164,8 +164,18 @@ install_apk(){ # $1=apk路径
   chcon u:object_r:shell_data_file:s0 "$TMP" 2>/dev/null
   chmod 644 "$TMP"
   log "安装 $(basename "$APK") ..."
-  local OUT
+  local OUT PKG
   OUT=$(pm install -r -d "$TMP" 2>&1 | tail -1)
+  case "$OUT" in
+    *VERSION_DOWNGRADE*)
+      # pm 的 -d 只允许 debuggable 应用降级；正式签名的系统相机从 16.x 回
+      # 13.x 必然被拒。先卸载用户级更新（-k 保留数据）→ 系统分区原厂应用
+      # 自动接管 → 再装目标 APK。跨移植包降级（如 210→203）同走此路径。
+      log "降级被拒（非 debuggable），先卸载当前更新再装..."
+      PKG=${STOCK_PKG:-com.android.camera}
+      pm uninstall -k --user 0 "$PKG" 2>&1 | tail -1
+      OUT=$(pm install -r -d "$TMP" 2>&1 | tail -1) ;;
+  esac
   rm -f "$TMP"
   log "install: $OUT"
   case "$OUT" in
@@ -178,6 +188,7 @@ install_apk(){ # $1=apk路径
 switch_stock(){
   profile_select || { log "!! 无可用 profile"; return 1; }
   [ "$PROFILE_ID" = "_generic" ] && log "⚠ 未识别机型，仅恢复原厂（不伪装）"
+  local prevm=$(state_get mode) prevp=$(state_get port)
   state_set stock "" "$PROFILE_ID"
 
   # 还原依赖快照：没有就现采一次（若当前已是伪装态会失败，需重启后采）
@@ -196,7 +207,9 @@ switch_stock(){
   else
     local sapk=$(stock_apk_resolve) || { log "!! 找不到原厂相机 APK（profile 与自动探测均失败）"; return 1; }
     [ "$sapk" = "${STOCK_APK:-}" ] || log "原厂 APK 自动定位: $sapk"
-    install_apk "$sapk" || return 1
+    # 安装失败要回滚 state：否则相机仍是移植版，state 却已写成 stock，
+    # info/守护进程都会按原厂铺库（旧 WebUI 卸载守卫正是被这个骗过）
+    install_apk "$sapk" || { state_set "$prevm" "$prevp" "$PROFILE_ID"; return 1; }
   fi
   fill_stock
   log "完成: $(cur_ver)（数据未清除，设置保留）"
@@ -226,6 +239,7 @@ switch_port(){ # $1=port id 或别名
   esac
 
   local props=${TARGET_PROJECT:-$SRC_PROJECT}
+  local prevm=$(state_get mode) prevp=$(state_get port)
   state_set port "$pid" "$PROFILE_ID"
   log "=== 切换到 $pid ($PORT_NAME) 伪装 $props ==="
   set_props "$props"
@@ -235,7 +249,7 @@ switch_port(){ # $1=port id 或别名
   if [ "$(cur_ver)" = "$APK_VER" ]; then
     log "已是 $APK_VER，跳过安装"
   else
-    install_apk "$(port_apk "$pid")" || return 1
+    install_apk "$(port_apk "$pid")" || { state_set "$prevm" "$prevp" "$PROFILE_ID"; return 1; }
   fi
   fill_port "$pid"
   log "完成: $(cur_ver)，打开相机即可使用（数据未清除，设置保留）"

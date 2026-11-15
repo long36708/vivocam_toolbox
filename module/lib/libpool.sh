@@ -158,10 +158,12 @@ pool_build_from_image(){
 # 这里以「铺完再数实际文件」为准，而不是只信循环计数——并发或 cp 失败时
 # 循环计数会虚高（本函数初版踩过：报 107/107 实际只有 106）。
 pool_fill(){
-  local list=$1 dst=$2 want=$3 name p n=0 miss=""
+  local list=$1 dst=$2 want=$3 name p n=0 miss="" cr
+  cr=$(printf '\r')   # Windows 手工打包的 names.lst 可能带 CRLF，查名会全落空 → 铺 0 个
   [ -f "$list" ] || { echo "!! 清单缺失: $list"; return 1; }
   rm -rf "$dst"; mkdir -p "$dst"
   while IFS= read -r name; do
+    name=${name%$cr}
     [ -n "$name" ] || continue
     p=$(pool_path "$name")
     if [ -n "$p" ]; then

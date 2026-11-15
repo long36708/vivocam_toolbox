@@ -48,7 +48,7 @@ cam.sh plugin export [family] [--verified] [--ver <归档版本>]
 
 | 前提 | 依据 |
 |---|---|
-| 自包含（不提供 thin 导出） | 分享对端库池可能为空；thin 只适合同机迭代，是陷阱不是功能 |
+| 自包含（不提供 thin 导出） | 分享对端库池可能为空；thin 只适合同机迭代，是陷阱不是功能。**但自包含还不够**：安装端必须把 `lib/` 的文件体与"名字→md5"索引一并写进池（6.0.2 修复），否则全新接收方 `pool_fill` 查不到索引 → lib=0 → `UnsatisfiedLinkError`（跨设备实测） |
 | 导出后 `plugin_validate` 自检 | legacy 合成是新代码路径，MEAT 复扫 + sha256 秒级开销值得 |
 | legacy TARGET_PROJECT 取自描述符 | `x500.port` 实证描述符字段齐全；伪装值无独立运行态存储（props.sh 只有原厂快照），conf/描述符的 TARGET_PROJECT 就是实际在跑的码 |
 | WebUI 导入扫描捞到刚导出的包、可重装 = 往返验证 | 不做排除处理；重装有六步闸门 + 原子换位兜底 |

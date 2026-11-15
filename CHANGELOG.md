@@ -1,6 +1,29 @@
 # Changelog
 
-## 6.0.0（当前）
+## 6.0.2（当前）
+
+- **修复分享场景 lib=0 / 相机启动闪退**（跨设备实测发现）：`plugin_install` 合并
+  自包含插件时只按 md5 拷贝 `.so` 文件体、从未登记 `libpool/.names` 的"名字→md5"
+  索引；导出方本机因 `addport` 从镜像建池时已写索引而不受影响，全新接收方
+  `.names` 为空 → `pool_fill` 按 names.lst 全查不到 → 一个库都铺不出来 →
+  `UnsatisfiedLinkError: dlopen failed: library "libmmkv.so" not found`。
+  安装循环改用 `pool_add`（拷体+登记索引）并先 `pool_init`；幂等，重复安装不会
+  产生重复映射。已用旧包安装的接收方：刷本版后重新导入同一插件 zip 再切换即可
+- **diagnose**：链因含 `UnsatisfiedLinkError ... not found` 时单独归因"native 库缺失"
+  并给出处置（重装/apply/手工铺库），不再误报"重启后首开一过性"
+- **pool_fill 兼容 CRLF 清单**：Windows 手工打出的 names.lst 行尾 `\r` 会让
+  按名查池全落空、铺出 0 个库；循环里剥掉行尾 CR（回归测试覆盖 LF/CRLF 两种）
+- **修复回原厂失败 `INSTALL_FAILED_VERSION_DOWNGRADE`**：`pm install -r -d` 的
+  `-d` 只放行 debuggable 应用降级，正式签名的系统相机从 16.x 回 13.x 必被拒；
+  命中该错误时先 `pm uninstall -k --user 0`（保留数据、卸载用户级更新，系统分区
+  原厂应用自动接管）再重装。跨移植包降级（如 210→203）同走此路径
+- **切换失败回滚 state**：`switch_stock/switch_port` 原在安装**之前**写 state，
+  安装失败后 info 仍谎报目标态（导致守护进程按错状态铺库、旧 WebUI 卸载守卫
+  被"已回原厂"骗过而误删插件）；失败时恢复切换前的 mode/port
+- **WebUI 卸载守卫改用切换命令真实结果**：`doSwitch` 返回是否输出"完成"，
+  `doRemove` 只在成功时才继续卸载；不再依赖会被提前改写的 state
+
+## 6.0.0
 
 - **SCHEMA=2：port zip 可选 `profiles/` 随包**（`plugin export` 自动附带本机用户 profile；
   内置 profile 自动跳过；手工组包亦可）。

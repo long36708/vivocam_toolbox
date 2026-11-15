@@ -1,6 +1,6 @@
 id=vivocam-toolbox
 name=VivoCamera 移植工具箱
-version=6.0.0
-versionCode=6
+version=6.0.2
+versionCode=8
 author=酷安矜持
 description=多机型 vivo 相机移植工具箱：机型自动识别(profile) + 原厂库自备份 + 内容寻址库池(78文件/85MB，替代分集) + 移植包按需下载 + HAL 兼容性探针与崩溃归因。免重启切换原厂/移植相机，附 BakaSU/KernelSU WebUI 面板。

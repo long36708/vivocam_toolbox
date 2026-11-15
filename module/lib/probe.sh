@@ -116,6 +116,10 @@ java_fatal_show(){
   local cause=$(printf '%s\n' "$blk" | cut -f6)
   local sig verdict advice
   case "$exc $cause" in
+    *"UnsatisfiedLinkError"*"not found"*)
+      sig="native 库缺失（UnsatisfiedLinkError）"
+      verdict="相机启动 dlopen 找不到库——一般是 /data/app lib 目录未铺库（lib=0）。分享场景根因多为自包含插件安装时未登记池名字索引（6.0.2 已修）"
+      advice="刷 6.0.2 后重新导入同一插件 zip 再切换；应急：cam.sh apply，或手工从 plugins/ports/<family>/lib/ 铺库（chown/restorecon 别省）" ;;
     *"duplicate column name"*)
       sig="minivlog DB duplicate column"
       verdict="高→低版本相机数据残留：16.x 移植相机已升级库表，原厂相机迁移重建同名列失败（PD2419 实测 2026-11）"
