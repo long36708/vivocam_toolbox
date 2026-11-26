@@ -2,6 +2,11 @@
 
 ## 6.0.4（当前）
 
+- **修复 PD2419 原厂备份缺库致拍照崩**（`UnsatisfiedLinkError: No implementation found
+  for ...Util.extractAlphaNative`）：`pd2419.profile` 的 `STOCK_LIB_EXPECT` 历史误填 76，
+  而系统原厂 lib 目录实际 82 个 .so——漏采 `libvivo.watermark.process/native.so`、
+  `libvivo_cv.so`、`libImageFlip.so` 等 6 个，导致 `cam.sh stock` 后拍照走水印合成崩。
+  期望值改 82 并重建 stock 备份后，stock 状态铺 82 库、水印库加载、拍照实测正常
 - **新增 SPOOF_PROPS：插件自带附加伪装属性**（S60 移植实战，PD2419 实测启动即崩
   `IllegalArgumentException: the entries is not match the entryValues`）：
   部分相机功能按"产品系列"分支选资源配对（`DeviceUtil.isSSeries/isXSeries` 双源
