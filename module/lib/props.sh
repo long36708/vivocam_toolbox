@@ -21,6 +21,11 @@
 
 PROPS_KEYS="ro.product.device ro.product.model.bbk ro.vivo.oem.model ro.hardware.bbk"
 
+# 附加快照键：插件可通过 port.conf 的 SPOOF_PROPS 伪装的"非项目码"属性。
+# 这类属性（如 ro.vivo.product.series——vivo 产品系列字母）同样无法从镜像
+# 推导本机原厂值，走同一套「快照 + 回放」；不进快照就无法安全还原。
+SNAP_EXTRA_KEYS="ro.vivo.product.series"
+
 # resetprop 定位：调用方（cam.sh/post-fs-data.sh）通常已设置 $RP；
 # 单独 source 本文件时自己找一遍，避免 $RP 为空导致命令静默失败。
 if [ -z "${RP:-}" ] || [ ! -x "${RP:-/nonexistent}" ]; then
@@ -75,6 +80,36 @@ props_looks_spoofed(){
   return 1
 }
 
+# 判断 <key> 的 <value> 是否是某个已装插件声明的伪装值
+# （快照采集防污染：伪装态下的 getprop 是插件写进去的值，绝不能存成"原厂"）
+prop_value_is_spoof(){
+  local key=$1 val=$2 conf pair
+  for conf in "${PLUGIN_PORTS_DIR:-$VIVODIR/plugins/ports}"/*/port.conf \
+              "$MODDIR"/ports/*.port; do
+    [ -f "$conf" ] || continue
+    for pair in $(conf_get "$conf" "$PORT_FIELDS" SPOOF_PROPS 2>/dev/null); do
+      [ "${pair%%=*}" = "$key" ] && [ "${pair#*=}" = "$val" ] && return 0
+    done
+  done
+  return 1
+}
+
+# 旧快照迁移：补采 SNAP_EXTRA_KEYS。
+# 仅当当前值不是伪装值时写入；伪装态下跳过，重启后 post-fs-data 自动补
+# （resetprop 是内存态，开机即恢复真值）。
+props_snapshot_migrate(){
+  local f k v
+  f=$(props_file)
+  for k in $SNAP_EXTRA_KEYS; do
+    v=$(props_orig "$k" 2>/dev/null)
+    [ -n "$v" ] && continue                 # 快照已有该键
+    v=$(props_get "$k")
+    [ -n "$v" ] || continue                 # 本机没有该属性
+    prop_value_is_spoof "$k" "$v" && continue
+    echo "$k=$v" >> "$f"
+  done
+}
+
 # 采集快照
 # $1=force（1=无条件覆盖）
 #
@@ -89,7 +124,8 @@ props_snapshot_capture(){
   mkdir -p "$VIVODIR" 2>/dev/null
 
   if [ "$force" != "1" ] && [ -s "$f" ]; then
-    return 0                      # 已有快照，不动
+    props_snapshot_migrate
+    return 0                      # 已有快照，仅补采附加键
   fi
 
   local boot_code boot_hw
@@ -103,7 +139,7 @@ props_snapshot_capture(){
   local tmp="$f.new.$$"
   : > "$tmp"
   local ok=1
-  for k in $PROPS_KEYS; do
+  for k in $PROPS_KEYS $SNAP_EXTRA_KEYS; do
     case "$k" in
       ro.product.device|ro.product.model.bbk|ro.vivo.oem.model)
         if [ "$spoofed" = "1" ] && [ -n "$boot_code" ]; then
@@ -122,8 +158,22 @@ props_snapshot_capture(){
           [ -n "$v" ] || v=$boot_hw
         fi
         ;;
+      *)
+        # 附加键（SNAP_EXTRA_KEYS）：cmdline 里没有，只能读当前值。
+        # 伪装态下读到的是插件写的值——绝不能存进快照。
+        v=$(props_get "$k")
+        if [ -n "$v" ] && prop_value_is_spoof "$k" "$v"; then
+          echo "⚠ $k 当前为伪装值($v)，本次跳过快照（重启后自动补采）" >&2
+          v=""
+        fi
+        ;;
     esac
     if [ -z "$v" ]; then
+      case " $SNAP_EXTRA_KEYS " in
+        *" $k "*)
+          # 附加键拿不到原厂值不致命：不写入快照，等下次开机补采
+          continue ;;
+      esac
       echo "!! 无法确定原厂值: $k（cmdline 与 getprop 均为空）" >&2
       ok=0; break
     fi
@@ -157,6 +207,13 @@ props_spoof(){
   $RP ro.product.model.bbk "$code"
   $RP ro.vivo.oem.model    "$code"
   $RP ro.hardware.bbk      "$hw"
+  # 插件声明的附加属性（port.conf 的 SPOOF_PROPS="key=value ..."）。
+  # 实战案例：S60 相机读 ro.vivo.product.series 判产品系列——不伪装时本机
+  # 真值(X)与 MEAT 配置(S)并存，DeviceUtil.isSSeries/isXSeries 同时命中，
+  # 一拍得闪光灯 entries/entryValues 错配（3/2）→ 启动即崩。
+  for pair in ${SPOOF_PROPS:-}; do
+    case "$pair" in *=*) $RP "${pair%%=*}" "${pair#*=}" ;; esac
+  done
 }
 
 # 还原为原厂值
@@ -168,6 +225,16 @@ props_spoof(){
 props_restore(){
   local k v
   [ -n "$RP" ] || { echo "!! resetprop 不可用，无法还原属性" >&2; return 1; }
+
+  # 0) 附加键：有快照就回放；无快照只能警告（伪装值可能残留到下次开机）
+  for k in $SNAP_EXTRA_KEYS; do
+    v=$(props_orig "$k" 2>/dev/null)
+    if [ -n "$v" ]; then
+      $RP "$k" "$v"
+    elif [ -n "$(props_get "$k")" ]; then
+      echo "⚠ $k 无快照，无法还原原厂值（伪装值可能残留；重启后 post-fs-data 自动补快照）" >&2
+    fi
+  done
 
   # 1) 快照
   if props_have_snapshot; then
@@ -217,7 +284,7 @@ props_status(){
   fi
   echo "当前实际:"
   local k
-  for k in $PROPS_KEYS; do
+  for k in $PROPS_KEYS $SNAP_EXTRA_KEYS; do
     printf "  %-24s = %s\n" "$k" "$(props_get "$k")"
   done
 }

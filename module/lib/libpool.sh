@@ -44,6 +44,25 @@ pool_add(){
 }
 
 # 名字 -> 池内路径（不存在则空）
+# 解析 names.lst 一行 → name + 可选 md5。
+# 两列格式（name md5）：pool_fill/物化直接按 md5 取内容寻址池的库体——
+# 背景：全局 .names 索引同名 first-wins，跨代插件重名时按名字反查会拿到
+# 旧代内容（S60 实测 14/48 实体库错）。单列老清单 md5 返回空，走老路径。
+# 返回经全局变量 _lst_name/_lst_md5（POSIX sh 无多返回值）。
+lst_split(){
+  local line=$1
+  _lst_name=${line%% *}
+  _lst_md5=""
+  case "$line" in
+    *" "*)
+      _lst_md5=${line#* }
+      case "$_lst_md5" in
+        */*|*" "*|"") _lst_md5="" ;;   # 非法（含斜杠/空白）→ 退回按名索引
+      esac
+      ;;
+  esac
+}
+
 pool_path(){
   local name=$1 m
   m=$(awk -v n="$name" '$1==n{print $2; exit}' "$IDX" 2>/dev/null)
@@ -133,7 +152,7 @@ pool_build_from_image(){
     [ -n "$m" ] || continue
     [ -f "$LIBPOOL/$m.so" ] || cp -f "$real" "$LIBPOOL/$m.so" || continue
     echo "$name $m" >> "$list.tmp"
-    echo "$name" >> "$list"
+    echo "$name $m" >> "$list"
 
     # 链接目标名也实体化一份：原厂布局 libmmkv.so -> libmmkv_n7.so，
     # 前者是加载名、后者是目标名。已验证可用的库集（107/106）两者都带，
@@ -142,7 +161,7 @@ pool_build_from_image(){
       tname=$(basename "$link" 2>/dev/null)
       if [ -n "$tname" ] && [ "$tname" != "$name" ]; then
         echo "$tname $m" >> "$list.tmp"
-        echo "$tname" >> "$list"
+        echo "$tname $m" >> "$list"
       fi
     fi
   done
@@ -153,7 +172,7 @@ pool_build_from_image(){
 }
 
 # 按名字清单铺库到目标 lib 目录
-# $1=名字清单 $2=目标 lib 目录 $3=期望数量（0=不校验）
+# $1=名字清单（两列 name md5 优先直取池体；单列老清单走按名索引） $2=目标 lib 目录 $3=期望数量（0=不校验）
 # 注意：调用方需保证不与 service.sh 并发（cam.sh 用 flock 串行化）。
 # 这里以「铺完再数实际文件」为准，而不是只信循环计数——并发或 cp 失败时
 # 循环计数会虚高（本函数初版踩过：报 107/107 实际只有 106）。
@@ -162,9 +181,16 @@ pool_fill(){
   cr=$(printf '\r')   # Windows 手工打包的 names.lst 可能带 CRLF，查名会全落空 → 铺 0 个
   [ -f "$list" ] || { echo "!! 清单缺失: $list"; return 1; }
   rm -rf "$dst"; mkdir -p "$dst"
-  while IFS= read -r name; do
-    name=${name%$cr}
+  while IFS= read -r line; do
+    line=${line%$cr}
+    lst_split "$line"
+    name=$_lst_name
     [ -n "$name" ] || continue
+    if [ -n "$_lst_md5" ] && [ -f "$LIBPOOL/$_lst_md5.so" ]; then
+      # 插件自带 name→md5：直取内容寻址体，绕开全局索引的 first-wins 污染
+      cp -f "$LIBPOOL/$_lst_md5.so" "$dst/$name" 2>/dev/null && n=$((n+1)) || miss="$miss $name"
+      continue
+    fi
     p=$(pool_path "$name")
     if [ -n "$p" ]; then
       cp -f "$p" "$dst/$name" 2>/dev/null && n=$((n+1)) || miss="$miss $name"

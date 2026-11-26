@@ -1,6 +1,46 @@
 # Changelog
 
-## 6.0.3（当前）
+## 6.0.4（当前）
+
+- **新增 SPOOF_PROPS：插件自带附加伪装属性**（S60 移植实战，PD2419 实测启动即崩
+  `IllegalArgumentException: the entries is not match the entryValues`）：
+  部分相机功能按"产品系列"分支选资源配对（`DeviceUtil.isSSeries/isXSeries` 双源
+  OR：系统属性 `ro.vivo.product.series` 或 MEAT 配置的 series）。项目码四属性伪装
+  不到它，本机真值(X)与 MEAT(S) 并存 → 两判定同真 → 一拍得闪光灯
+  entries/entryValues 3/2 错配。现 `port.conf` 可声明
+  `SPOOF_PROPS="ro.vivo.product.series=S"`（构建器从镜像 build.prop 自动推导）；
+  `props.sh` 快照/还原覆盖附加键（`SNAP_EXTRA_KEYS`，伪装值不进快照 + 旧快照
+  自动迁移补采 + 还原回放），stock↔port 往返属性正确
+- **修复库池 first-wins 污染：新插件同名库拿到旧代内容**（S60 初版实测
+  libmmkv/libeglImageRender/libvivolog 等 14/48 实体库为 13.x 代内容）：
+  `pool_build_from_image` 写 `.names` 后 first-wins 去重，而
+  `plugin_build`/`pool_fill`/`plugin_export` 按**名字**反查池 → 跨代重名库被旧内容
+  覆盖。names.lst 升级两列 `name md5`（构建时记录镜像内真值），三处物化按插件
+  自带 md5 直取内容寻址池体；单列老清单走老路径完全兼容。重建后 96/96 对账全过
+- **修复 diagnose 对 `UnsatisfiedLinkError` 的漏判**：原匹配式只认
+  `not found`（dlopen 缺库），PD2419 实测 `No implementation found for
+  ...Util.extractAlphaNative`（JNI 符号错配/缺库）被误判"未收录"。现按文本
+  分流：`dlopen … not found`→库缺失；`No implementation found`→方法无实现
+  （缺库或 DEX/so 版本错配，各自给处置，`cam.sh clear` 对后者无效）
+- **WebUI 加载提速约 14×（9 插件实测 `cam.sh info` 22.56s → 1.63s）**：
+  根因是 `conf_read` 对每个配置行 `printf|grep` fork、`_conf_set` 对每个值
+  `printf|sed` fork，叠加 `info` 里 `port_find` 的 O(N²) 重扫，一次刷新产生
+  3200+ 次 fork。现白名单 `^(A|B)$` 走零 fork 的 shell case 快路径（其他
+  正则形式回退 grep），值不含单引号时直接 eval（含引号仍走 sed 转义，注入
+  安全语义不变）；纯 shell 改动，输出逐字段比对无回归
+- **diagnose 新增水印 NPE 签名**（FINDINGS §16）：跨机型切换后水印模板缓存
+  （MMKV `global_pref_camera_watermark_tmpl_online_state`）无本机型默认模板 →
+  `getCurrentTmpl` null → 2s 崩溃循环；归因 + 处置（`cam.sh clear` 重建缓存）
+- **WebUI 新增模块版本号显示**：标题旁版本徽标（v6.0.4 · 10）+ 状态卡首行，
+  一眼看出用户跑的是哪个版本
+- **WebUI 新增「一键移植」**：输入固件解包根（如 `/data/RNA/RNA_S60`）即可在页面
+  完成插件全流程——自动推导插件名（RNA_S60→s60）、预检布局/APK/lib64/磁盘余量/
+  同名覆盖、`addport` 后台构建（MEAT/版本/库自动扫描）+ 日志轮询（3–8 分钟不冻屏）、
+  完成后插件直接出现在切换卡片
+- diagnose 补充 MiniVLog DB 降级签名（16.x 移植相机升级库表后回原厂，
+  迁移重建同名列失败）
+
+## 6.0.3
 
 - **修复切换后相机闪退、需硬重启才恢复**（真机实测：切到移植包使用后切回原厂，
   原厂相机闪退，硬重启正常）：属性只对"之后新起的进程"生效，原流程只

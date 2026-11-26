@@ -407,8 +407,14 @@ plugin_build(){
         | grep -o '[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*' | head -1)
   [ -n "$ver" ] || ver=unknown
 
-  local srcprj
+  local srcprj series
   srcprj=$(grep -a 'ro.vivo.system.product.model=' "$root/system/system/build.prop" 2>/dev/null \
+           | head -1 | cut -d= -f2 | tr -d ' \r')
+  # 产品系列字母（S/X/Y/T…）：部分相机功能按系列分支（如一拍得闪光灯配对）。
+  # 不随插件伪装它的话，本机真值与 MEAT 配置的系列会并存，系列判定双源打架。
+  # S60 实战案例：DeviceUtil.isSSeries/isXSeries 同时为真 → 一拍得闪光灯
+  # entries/entryValues 错配（3/2）→ 启动即崩（SettingSupportManager.resetFlash）。
+  series=$(grep -a 'ro.vivo.product.series=' "$root/system/system/build.prop" 2>/dev/null \
            | head -1 | cut -d= -f2 | tr -d ' \r')
 
   echo "扫描 \$\$MEAT ..."
@@ -438,6 +444,7 @@ plugin_build(){
     echo "ALIASES=\"${fam}-${ver##*.}\""
     echo "PORT_NAME=\"${fam} 相机 $ver\""
     echo "SRC_PROJECT=${srcprj:-$tgt}"
+    [ -n "$series" ] && echo "SPOOF_PROPS=\"ro.vivo.product.series=$series\""
     echo "MEAT_CODES=\"$meat\""
     echo "TARGET_PROJECT=$tgt"
     echo "APK_VER=$ver"
@@ -454,11 +461,17 @@ plugin_build(){
   cp -f "$list" "$out/names.lst"
   rm -f "$list"
 
-  # APK 与库：APK 直接拷（分发件需要），库从池里物化
+  # APK 与库：APK 直接拷（分发件需要），库从池里物化（两列清单按 md5 直取，防跨代重名污染）
   ln -f "$apk" "$out/VivoCamera.apk" 2>/dev/null || cp -f "$apk" "$out/VivoCamera.apk"     || { rm -rf "$out"; return 1; }
-  local name p
-  while IFS= read -r name; do
+  local line name p
+  while IFS= read -r line; do
+    lst_split "$line"
+    name=$_lst_name
     [ -n "$name" ] || continue
+    if [ -n "$_lst_md5" ] && [ -f "$LIBPOOL/$_lst_md5.so" ]; then
+      cp -f "$LIBPOOL/$_lst_md5.so" "$out/lib/$name" 2>/dev/null
+      continue
+    fi
     p=$(pool_path "$name")
     [ -n "$p" ] && cp -f "$p" "$out/lib/$name" 2>/dev/null
   done < "$out/names.lst"
@@ -618,12 +631,18 @@ plugin_export(){
     || cp -f "$src/VivoCamera.apk" "$stage/VivoCamera.apk" \
     || { rm -rf "$stage"; return 1; }
 
-  # 库池物化（自包含导出的本体）：逐名命中池。缺一个都拒绝——缺库包发出去
-  # 就是别人手里切不出片的半成品，宁可现在失败
-  local name p nlib=0 miss=""
-  while IFS= read -r name; do
+  # 库池物化（自包含导出的本体）：两列清单按 md5 直取（防跨代重名污染），单列走按名索引。
+  # 缺一个都拒绝——缺库包发出去就是别人手里切不出片的半成品，宁可现在失败
+  local line name p nlib=0 miss=""
+  while IFS= read -r line; do
+    lst_split "$line"
+    name=$_lst_name
     [ -n "$name" ] || continue
-    p=$(pool_path "$name")
+    if [ -n "$_lst_md5" ] && [ -f "$LIBPOOL/$_lst_md5.so" ]; then
+      p=$LIBPOOL/$_lst_md5.so
+    else
+      p=$(pool_path "$name")
+    fi
     if [ -n "$p" ] && cp -f "$p" "$stage/lib/$name" 2>/dev/null; then
       nlib=$((nlib+1))
     else

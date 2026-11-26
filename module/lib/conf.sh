@@ -28,7 +28,15 @@
 _sq(){ sed "s/'/'\\\\''/g"; }
 
 # 受控赋值：$1=已校验变量名 $2=字面值
-_conf_set(){ eval "$1='$(printf "%s" "$2" | _sq)'"; }
+# 值里没有单引号时直接 eval（零 fork）——info 期间约 1600 次赋值，
+# 老路径每次 printf|_sq(sed) fork 两次，是除字段白名单外的第二个爆炸点；
+# 含单引号仍走原 sed 转义，保持注入安全语义不变。
+_conf_set(){
+  case "$2" in
+    *"'"*) eval "$1='$(printf "%s" "$2" | _sq)'" ;;
+    *)     eval "$1='$2'" ;;
+  esac
+}
 
 # conf_read <file> <allow_regex> <prefix>
 #   逐行解析 KEY=VALUE，允许的键读成 ${prefix}${KEY}；不认识的键直接跳过
@@ -36,7 +44,7 @@ _conf_set(){ eval "$1='$(printf "%s" "$2" | _sq)'"; }
 conf_read(){
   local f=$1 allow=$2 pfx=$3
   [ -f "$f" ] || return 1
-  local CR TAB QU LINE key val
+  local CR TAB QU LINE key val _allow
   CR=$(printf '\r')
   TAB=$(printf '\t')
   QU='"'
@@ -52,9 +60,17 @@ conf_read(){
     [ -n "$key" ] || continue
     # 键字符白名单（挡前导数字与下划线开头，避免碰内部变量）
     case "$key" in *[!A-Za-z0-9_]*|[0-9]*|_*) continue ;; esac
-    # 字段白名单正则
+    # 字段白名单：^(A|B|C)$ 走零 fork 的 case 快路径。
+    # 逐行 grep fork 会让 cam.sh info 随插件数爆炸（实测 9 插件 ~22s，1000 次
+    # grep fork 13.34s vs 1000 次 case 0.01s）；其他正则形式仍回退 grep。
     if [ -n "$allow" ]; then
-      printf '%s' "$key" | grep -qE "$allow" 2>/dev/null || continue
+      case "$allow" in
+        '^('*')'$)
+          _allow=${allow#'^('}; _allow=${_allow%')'$}
+          case "|$_allow|" in *"|$key|"*) : ;; *) continue ;; esac
+          ;;
+        *) printf '%s' "$key" | grep -qE "$allow" 2>/dev/null || continue ;;
+      esac
     fi
 
     # ---- 值处理：成对引号优先（容忍其后空白+#注释）；无引号才剥行内注释 ----

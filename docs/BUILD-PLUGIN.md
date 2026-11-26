@@ -91,7 +91,7 @@ sh $M/cam.sh plugin build /data/RNA/RNA_x500 x500
 ```
 /data/adb/vivocam/plugins/ports/out/x500-16.1.4.203/
 ├── port.conf       ← 元数据（自动生成，别手改除 TARGET_PROJECT/TARGETS）
-├── names.lst       ← 库文件名清单
+├── names.lst       ← 库清单：两列 `name md5`（物化/铺库按 md5 直取池体，防跨代重名被旧内容覆盖；老单列格式仍兼容）
 ├── VivoCamera.apk  ← ~0.5GB
 └── lib/*.so        ← 自包含库集
 ```
@@ -168,7 +168,8 @@ am start -n com.android.camera/.CameraActivity   # 逐模式实测：预览 → 
 - **不用半份镜像**——只解出 `app/` 没有 `system/system/lib64/` 会静默缺库
   （唯一线索是构建期的 `WARN unresolved-link`）；
 - 不要手改自动生成的 `port.conf` 字段（sha256/LIB_EXPECT/MEAT）——装时会复核，
-  改了只会换来校验失败；只有 `TARGET_PROJECT`（换伪装码）与 `TARGETS`（实测背书）
-  是给人改的；
+  改了只会换来校验失败；只有 `TARGET_PROJECT`（换伪装码）、`TARGETS`（实测背书）
+  与 `SPOOF_PROPS`（附加伪装属性，如 `SPOOF_PROPS="ro.vivo.product.series=S"`；
+  构建器已从镜像 build.prop 自动推导）是给人改的；
 - 不删 `/data/adb/vivocam/stock/` 与 `original_props`——那是回原厂的路；
 - 只从可信来源拿别人的插件 zip：sha256 只保完整性，不保可信度（ARCHITECTURE §11）。

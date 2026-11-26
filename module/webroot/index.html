@@ -23,6 +23,10 @@
   .row { display: flex; align-items: center; gap: 8px; }
   .space { flex: 1; }
   h1 { font-size: 19px; font-weight: 700; }
+  .verbadge {
+    background: var(--card2); color: var(--muted); border: 1px solid var(--border);
+    border-radius: 999px; padding: 4px 10px; font-size: 12px; font-weight: 600; flex: none;
+  }
   .iconbtn {
     background: var(--card); color: var(--fg); border: 1px solid var(--border);
     border-radius: 10px; padding: 8px 14px; font-size: 14px;
@@ -76,12 +80,19 @@
   .hint b { color: var(--warn); }
   .sect { font-size: 13px; font-weight: 700; color: var(--muted); margin-top: 14px; letter-spacing: .5px; }
 
-  pre#log {
+  pre#log, pre#addlog {
     background: #0b0f13; color: #b8e986; border: 1px solid var(--border); border-radius: 12px;
     font: 11.5px/1.55 ui-monospace, monospace; padding: 10px; margin-top: 10px;
     max-height: 260px; overflow: auto; white-space: pre-wrap; word-break: break-all;
   }
-  pre#log:empty { display: none; }
+  pre#log:empty, pre#addlog:empty { display: none; }
+
+  .tin {
+    background: var(--card2); color: var(--fg); border: 1px solid var(--border);
+    border-radius: 12px; padding: 11px 12px; font-size: 14px; width: 100%; margin-top: 8px;
+  }
+  .tin:focus { outline: none; border-color: var(--accent); }
+  .tin::placeholder { color: var(--muted); opacity: .7; }
 
   #overlay {
     position: fixed; inset: 0; background: rgba(0,0,0,.55); backdrop-filter: blur(2px);
@@ -110,6 +121,7 @@
 <body>
   <div class="row">
     <h1>VivoCamera 工具箱</h1>
+    <span id="verBadge" class="verbadge hidden"></span>
     <div class="space"></div>
     <button id="btn-reload" class="iconbtn">刷新</button>
   </div>
@@ -146,6 +158,25 @@
     </div>
   </div>
 
+  <div class="card" id="addportCard">
+    <div class="sect" style="margin-top:0">一键移植（固件解包目录 → 插件）</div>
+    <div class="hint" style="margin-top:6px">
+      输入标准固件解包根（如 <code>/data/RNA/RNA_S60</code>），自动扫描版本/MEAT 伪装码/库并生成+安装插件（约 3–8 分钟，完成后出现在上方卡片）。
+      要求双层 system 布局且含 VivoCamera.apk；<b>/data 余量 ≥1GB</b>；伪装码留空=自动取第一个扫描到的 MEAT 码。
+    </div>
+    <input id="in-mirror" class="tin" type="text" placeholder="固件解包根目录，如 /data/RNA/RNA_S60"
+           autocapitalize="off" autocorrect="off" spellcheck="false">
+    <div class="row" style="margin-top:8px; align-items:stretch">
+      <input id="in-family" class="tin" type="text" placeholder="插件名（自动推导，如 s60）" style="margin-top:0"
+             autocapitalize="off" autocorrect="off" spellcheck="false">
+      <input id="in-target" class="tin" type="text" placeholder="伪装码（选填，如 PD2572）" style="margin-top:0"
+             autocapitalize="off" autocorrect="off" spellcheck="false">
+    </div>
+    <button id="btn-addport" class="btn">开始构建并安装插件</button>
+    <div class="hint" id="addport-hint">构建在后台执行，下方日志每 3 秒刷新；期间请勿切换相机版本。</div>
+    <pre id="addlog"></pre>
+  </div>
+
   <div class="card">
     <div class="btngrid">
       <button id="btn-open" class="btn ghost mini">打开相机</button>
@@ -170,6 +201,7 @@
 'use strict';
 const CAM = 'com.android.camera';
 let MOD = '/data/adb/modules/vivocam-toolbox';   // 由 info 输出校正
+let MODVER = '';                                  // 模块版本（module.prop，header 徽标 + 状态卡）
 
 // ---------- KernelSU/bakaSU JS 桥接（兼容原版与 bakaSU，签名一致） ----------
 function hasBridge() { return typeof window.ksu !== 'undefined' && typeof window.ksu.exec === 'function'; }
@@ -233,6 +265,7 @@ function nextPaint() {
     setTimeout(fin, 350);
   });
 }
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 // ---------- 渲染 ----------
 let ST = null;
@@ -283,7 +316,8 @@ function renderStatus(st) {
   if (!consistent && reason) sub.textContent += ' ⚠ ' + reason;
 
   meta.innerHTML =
-    '机型 <code>' + esc(st.target || '?') + '</code> → profile <code>' + esc(st.profile || '?') + '</code><br>'
+    (MODVER ? '模块 <code>v' + esc(MODVER) + '</code><br>' : '')
+    + '机型 <code>' + esc(st.target || '?') + '</code> → profile <code>' + esc(st.profile || '?') + '</code><br>'
     + 'native 库 <code>' + esc(st.libs || '0') + '</code> ｜ 库池 <code>' + esc(st.pool || '0') + '</code> ｜ 原厂备份 <code>' + esc(st.stock_backup || '0') + '</code>';
 
   document.getElementById('reapplyBox').style.display =
@@ -375,6 +409,17 @@ async function refresh() {
       }
     }
     ST = st;
+    // 模块版本（header 徽标；读取失败静默，不影响主流程）
+    try {
+      const rv = await exec('grep -E "^version(Code)?=" "' + MOD + '/module.prop" 2>/dev/null', 10);
+      const kvv = parseKV(rv.stdout);
+      if (kvv.version) {
+        MODVER = kvv.version;
+        const b = document.getElementById('verBadge');
+        b.textContent = 'v' + kvv.version + (kvv.versionCode ? ' · ' + kvv.versionCode : '');
+        b.classList.remove('hidden');
+      }
+    } catch (e2) {}
     renderStatus(st);
   } catch (e) {
     toast('状态刷新失败: ' + e.message);
@@ -497,6 +542,99 @@ async function doProfileGen() {
   setBusy(false);
 }
 
+// ---------- 一键移植：固件解包根 → cam.sh addport（建池+构建+安装） ----------
+// 构建需 3–8 分钟而 ksu.exec 同步阻塞主线程，走「后台 + 轮询」：
+//   启动: sh -c 'sh $MOD/cam.sh addport … >/data/local/tmp/vt-addport.log 2>&1 </dev/null &'
+//         （重定向齐全，父 sh 立即返回，构建进程由 init 收养继续跑）
+//   轮询: 每 3s cat 日志 + pgrep 查进程存活（[c] 技巧防 pgrep 匹配轮询命令自身）
+const ADDLOG = '/data/local/tmp/vt-addport.log';
+
+async function doAddPort() {
+  if (busy) return;
+  const root = (document.getElementById('in-mirror').value || '').trim().replace(/\/+$/, '');
+  const fam  = (document.getElementById('in-family').value || '').trim();
+  const tgt  = (document.getElementById('in-target').value || '').trim();
+  if (!/^\/[A-Za-z0-9_\/.\-]+$/.test(root)) { toast('镜像根路径不合法（需以 / 开头，不含空格/引号）'); return; }
+  if (!/^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(fam)) { toast('插件名只能用字母/数字/-/_，如 s60'); return; }
+  if (tgt && !/^[A-Za-z0-9_-]+$/.test(tgt)) { toast('伪装码格式不合法（如 PD2572）'); return; }
+
+  setBusy(true);
+  const el = document.getElementById('addlog');
+  el.textContent = '';
+  appendLog(''); appendLog('>>> 一键移植 ' + root + ' → 插件 ' + fam);
+  overlay('预检镜像…'); await nextPaint();
+  try {
+    // 预检：目录存在 / APK 在（双层或单层布局）/ lib64 在 /data 余量 ≥1GB / 同名插件警告
+    const c = await exec(
+      'if [ ! -d "' + root + '" ]; then echo E_DIR; ' +
+      'elif [ ! -f "' + root + '/system/system/app/VivoCamera/VivoCamera.apk" ] && [ ! -f "' + root + '/system/app/VivoCamera/VivoCamera.apk" ]; then echo E_APK; ' +
+      'elif [ ! -d "' + root + '/system/system/lib64" ] && [ ! -d "' + root + '/system/lib64" ]; then echo E_LIB64; ' +
+      'else echo OK; df -m /data 2>/dev/null | tail -1; ' +
+      '[ -f /data/adb/vivocam/plugins/ports/' + fam + '/port.conf ] && echo EXISTS; fi', 15);
+    const lines = (c.stdout || '').trim().split('\n').filter(Boolean);
+    const first = lines[0] || 'E_DIR';
+    if (first === 'E_DIR') { overlay(''); toast('目录不存在: ' + root); setBusy(false); return; }
+    if (first === 'E_APK') { overlay(''); toast('没找到 VivoCamera.apk（需双层 system 布局，见 BUILD-PLUGIN.md §2）'); setBusy(false); return; }
+    if (first === 'E_LIB64') { overlay(''); toast('缺 lib64 目录——不完整镜像会静默缺库，先补全镜像'); setBusy(false); return; }
+    const dfLine = lines.find(x => /^\/dev\//.test(x)) || '';
+    const freeMb = parseInt(dfLine.split(/\s+/)[3], 10) || 0;
+    if (freeMb && freeMb < 1024) { overlay(''); toast('/data 仅剩 ' + freeMb + 'MB（建议 ≥1GB），构建中止'); setBusy(false); return; }
+    if (freeMb) appendLog('预检 OK（/data 可用约 ' + freeMb + 'MB）');
+    if (lines.indexOf('EXISTS') >= 0 && !confirm('插件 ' + fam + ' 已存在。\n继续将覆盖安装（旧版本自动归档，可用 plugin rollback 回退）。继续？')) {
+      overlay(''); setBusy(false); return;
+    }
+    overlay('');
+
+    // 后台启动（重定向齐全 → 立即返回）
+    const launch = await exec(
+      "sh -c 'sh " + MOD + "/cam.sh addport \"" + root + "\" " + fam + (tgt ? ' ' + tgt : '') +
+      " >" + ADDLOG + " 2>&1 </dev/null &'", 15);
+    if (launch.errno !== 0) { appendLog('!! 后台启动失败（errno=' + launch.errno + '）'); overlay(''); setBusy(false); return; }
+    document.getElementById('btn-addport').textContent = '构建中…（看下方日志）';
+    await addportPoll();
+  } catch (e) {
+    appendLog('!! ' + e.message); overlay('');
+  }
+  document.getElementById('btn-addport').textContent = '开始构建并安装插件';
+  setBusy(false);
+}
+
+async function addportPoll() {
+  const el = document.getElementById('addlog');
+  const t0 = Date.now();
+  for (;;) {
+    await sleep(3000);
+    let out = '';
+    try {
+      const r = await exec('cat ' + ADDLOG + ' 2>/dev/null; echo __S__; pgrep -f "[c]am.sh addport" >/dev/null 2>&1 && echo RUNNING || echo DONE', 15);
+      out = r.stdout || '';
+    } catch (e) { /* 单次轮询失败不中断，下一轮重试 */ }
+    const parts = out.split('__S__');
+    const logBody = (parts[0] || '').replace(/\n+$/, '');
+    const state = (parts.slice(1).join('__S__') || '').trim();
+    el.textContent = logBody || '(等待构建输出…)';
+    el.scrollTop = el.scrollHeight;
+    if (state.indexOf('RUNNING') < 0) {
+      const ok = /✓ 插件已安装/.test(logBody);
+      if (ok) {
+        appendLog('>>> 构建完成：插件已安装，出现在上方卡片，点卡片即可切换');
+        toast('移植完成：点上方插件卡片切换生效');
+        exec('rm -f ' + ADDLOG + ' 2>/dev/null', 5);
+        ST = null; await refresh();
+      } else {
+        appendLog('>>> 构建未成功——常见原因：镜像不完整（WARN unresolved-link）、空间不足、伪装码无效。按日志处置后重试。');
+        toast('移植构建未成功，见日志');
+      }
+      return;
+    }
+    if (Date.now() - t0 > 15 * 60 * 1000) {
+      appendLog('!! 轮询超时（15 分钟）。构建可能仍在后台：稍后点「刷新」看插件列表，或 root shell 查看 ' + ADDLOG);
+      toast('等待超时，构建可能仍在后台跑');
+      return;
+    }
+  }
+}
+
 document.getElementById('btn-reapply').onclick = doReapply;
 document.getElementById('btn-open').onclick    = doOpen;
 document.getElementById('btn-reload').onclick  = refresh;
@@ -506,6 +644,16 @@ document.getElementById('btn-snapshot').onclick = doSnapshot;
 document.getElementById('btn-import').onclick  = doImport;
 document.getElementById('btn-profilegen').onclick = doProfileGen;
 document.getElementById('btn-clear').onclick   = doClear;
+document.getElementById('btn-addport').onclick = doAddPort;
+// 镜像根输入 → 自动推导插件名（RNA_S60 → s60）；用户手动改过插件名则不覆盖
+document.getElementById('in-mirror').addEventListener('input', (e) => {
+  const v = (e.target.value || '').trim().replace(/\/+$/, '');
+  const base = v.split('/').pop() || '';
+  const m = base.replace(/^RNA_/i, '').toLowerCase();
+  const f = document.getElementById('in-family');
+  if (m && /^[a-z][a-z0-9_-]*$/.test(m) && !f.dataset.touched) f.value = m;
+});
+document.getElementById('in-family').addEventListener('input', (e) => { e.target.dataset.touched = '1'; });
 
 async function doImport() {
   if (busy) return;

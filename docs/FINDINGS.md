@@ -170,3 +170,79 @@ vivo 原厂相机 APK 自带 `lib/arm64/`，其中约 1/3 是指向
 - 磁盘余量必须 >10G：满盘时多帧合成缓冲落盘失败 → HAL 崩溃循环（曾表现为"卡死"）；
 - WebUI `ksu.exec` 同步占死 WebView 主线程：长命令前必须 `await nextPaint()`
   强制提交一帧，否则页面假死；转圈动画必须用 GPU 合成器驱动的 `transform`。
+
+## §16 水印模板缓存是机型键控的：跨机型残留 → getCurrentTmpl null → 崩溃循环
+
+**现象**（PD2419，2026-11-16，iqoo16 移植包 16.1.5.229）：x500 用过之后切到 iqoo16，
+拍照正常；一旦进「水印」设置页或切到录像模式，相机开始 2 秒一次的崩溃循环：
+
+```
+NullPointerException: ... 'java.lang.String ...watermark.WMTemplate.getId()' on a null object reference
+  at WatermarkUtils.getTemplateId(WatermarkUtils.java:14)
+  at WatermarkAddition.onStateSessionCreated(WatermarkAddition.java:109)   ← 每次开相机都会走到
+```
+
+**机制**（jadx 反编译 16.1.5.229 dex 实证）：
+
+- 相机把水印模板表缓存进 MMKV（`files/mmkv/camera`，键
+  `global_pref_camera_watermark_tmpl_online_state`，值是一个模板 ID → 元数据的 JSON map）；
+- 「当前模板」不是按 JSON 里的 `selected` 标志确定的：构造 `WatermarkOnlineJSON` 时，
+  photo 默认项要求 `FeatureConfig.instance.setDefaultWatermark(templateId)` 为真，而
+  `FeatureConfig_meat_PD2606.setDefaultWatermark()` **只认 `DEFAULT_PHOTO_IQOO`**
+  （`FeatureConfig_common` 的实现是恒真，机型的 MEAT 类覆写收紧）；
+- 缓存没有「本机型默认模板」时 `getCurrentTmpl()` 返回 **null**，而
+  `WatermarkAddition.onStateSessionCreated` / `findCurrentTmplIndex` 都不判空 → NPE；
+- 崩溃循环的放大器：App 记住了崩溃时的模式（如录像），重启后仍进该模式 → 再崩。
+
+**为什么拍照先正常**：x500 时代的缓存里 photo 选中项能解析出来；解析不出的是
+video 模板 / 设置页遍历 video 列表的路径——所以只在「水印」页和录像模式炸。
+
+**处置**：`cam.sh clear`（`pm clear`）后相机重建缓存——重建值必含本机型默认模板
+（photo `TEN_YEARS_KPL`、video `DEFAULT_VIDEO_IQOO`，已从重建后的 MMKV 解出验证），
+水印功能保留。无法手术式只删这一个键：MMKV 记录链带 CRC、部分记录解析不稳定，
+写坏整个文件的最坏后果恰好等于清设置，不值得冒险（diagnose 已按 §16 归因并给处置）。
+
+## §17 S60(PD2572) 移植双坑：series 属性双源判定 + 库池 first-wins 污染
+
+**背景**（2026-11-21，PD2419）：`/data/RNA/RNA_S60`（PD2572=vivo S60/V2572A，MTK mt6881，
+OriginOS 6/Android 16）`cam.sh addport` 一步成插件（16.1.1.385，96 库零缺库），但启动即崩；
+修好启动后又发现库内容错代。
+
+### §17.1 启动崩 `IllegalArgumentException: the entries is not match the entryValues`
+
+栈：`UIListPreference.setLocalData` ← `SettingSupportManager.resetFlash`（一拍得分支），
+`pm clear` 后依旧 → 不是数据残留。
+
+机制（jadx classes7.dex + aapt2 全资源表 + LSPosed eval_js 读运行时数组实证）：
+
+- 一拍得闪光灯配对逻辑：`getPolaroidVersion()<3 && (isSSeries||isVSeries) && isUseNewFlashTorchUI()`
+  选 `pref_camera_polaroid_v3_specia_flashmode_entries/entryvalues`（3/3，配对正确）；
+  随后 `else if (DeviceUtil.isXSeries())` 把 entryValues **覆盖**成
+  `pref_camera_polaroid_flashmode_entryvalues_x_series`（**2 项**）→ 3/2 错配 throw；
+- `DeviceUtil.isSSeries/isXSeries` 是**双源 OR**：系统属性 `ro.vivo.product.series`
+  **或** `FeatureConfig.productSeries()`（MEAT）。本机真值 series=X（PD2419=X200，模块
+  原伪装只覆盖 4 个项目码属性），MEAT(PD2572) series=S → 两个判定**同时为真** → 错配。
+  真 S60 上 prop=S，isXSeries()=false，永不触发；
+- APK 内全部 flash 数组对静态长度一致（aapt2 全量核对），无 RRO 针对 com.android.camera，
+  vivo 动态资源（VCodeImpl.apk）两机逐字节相同 → 运行时错配必是**代码配对 bug**，
+  根因在伪装属性不全而非资源覆盖。
+
+**修复（数据级）**：伪装 `ro.vivo.product.series=S`。固化为 `port.conf` 新字段
+`SPOOF_PROPS="key=value ..."`（构建器从镜像 build.prop 自动推导）+ props.sh 快照/还原
+覆盖附加键（`SNAP_EXTRA_KEYS`，防伪装值污染快照 + 旧快照迁移 + restore 回放）。
+stock↔s60 往返 series X↔S 验证正确。
+
+### §17.2 库池 first-wins 污染：新插件同名库拿到旧代内容
+
+`pool_build_from_image` 写 `.names` 后 `awk '!seen[$1]++'` 去重是 first-wins；
+`plugin_build`/`pool_fill`/`plugin_export` 按**名字**反查池 → S60 初版插件
+libmmkv/libeglImageRender/libvivolog 等为 s30promini(13.x 代) 内容（另一会话实测 14/48 错）。
+
+**修复**：names.lst 升级两列（`name md5`，构建时记录镜像真值——重映射进镜像内 lib64
+解析），三处物化按插件自带 md5 直取内容寻址池体；单列老清单走老路径兼容。s60 重建后
+96/96 对账全过。
+
+**⚠ 对账方法坑**：直接 `md5sum /data/RNA/<镜像>/…/app/VivoCamera/lib/arm64/X.so` 会跟随
+悬空链接读到**设备自己的** /system/lib64 同名库（§13.1 同源），不是镜像真值；镜像真值
+只能取重映射路径或构建记录值。本次调查中该坑一度把"设备库"误判为"镜像真值"，导致
+误报"修复后 libmmkv 仍旧值"。

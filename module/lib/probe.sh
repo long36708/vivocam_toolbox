@@ -116,14 +116,22 @@ java_fatal_show(){
   local cause=$(printf '%s\n' "$blk" | cut -f6)
   local sig verdict advice
   case "$exc $cause" in
+    *"UnsatisfiedLinkError"*"No implementation found"*)
+      sig="native 方法无实现（UnsatisfiedLinkError / JNI 符号错配）"
+      verdict="栈顶括号里的 native 方法在当前已加载库中找不到 JNI 实现——两种可能：① 相机 lib 目录（/data/app/.../lib/arm64）缺承载该类的 so（lib=0 或铺库清单漏项）；② so 在但版本与 APK 的 DEX 错配（DEX 有新方法、so 还是旧版不含该导出）。PD2419 实测 extractAlphaNative 属缺库+错配：相机目录无 Util_ 符号，libpool 候选库也不含该导出"
+      advice="核对相机 lib 目录有没有承载栈顶类的 so：没有→从匹配版本的插件/原厂镜像补库（chown/restorecon 别省）；有但报此错→换与 APK 同版本的 so。cam.sh clear 对此无效（只清数据不补库）" ;;
     *"UnsatisfiedLinkError"*"not found"*)
-      sig="native 库缺失（UnsatisfiedLinkError）"
+      sig="native 库缺失（UnsatisfiedLinkError / dlopen）"
       verdict="相机启动 dlopen 找不到库——一般是 /data/app lib 目录未铺库（lib=0）。分享场景根因多为自包含插件安装时未登记池名字索引（6.0.2 已修）"
       advice="刷 6.0.2 后重新导入同一插件 zip 再切换；应急：cam.sh apply，或手工从 plugins/ports/<family>/lib/ 铺库（chown/restorecon 别省）" ;;
     *"duplicate column name"*)
       sig="minivlog DB duplicate column"
       verdict="高→低版本相机数据残留：16.x 移植相机已升级库表，原厂相机迁移重建同名列失败（PD2419 实测 2026-11）"
       advice="cam.sh clear 清相机数据——设置会重置、MiniVLog 草稿会丢；DCIM 媒体不受影响" ;;
+    *"watermark.WMTemplate.getId()"*"null object reference"*|*"watermark.WMOnlineTempl.getTemplateId()"*"null object reference"*)
+      sig="水印模板解析 NPE（getCurrentTmpl null）"
+      verdict="水印在线模板缓存（MMKV files/mmkv/camera 键 global_pref_camera_watermark_tmpl_online_state）里的「当前模板」按机型默认解析（FeatureConfig_meat_PDxxxx.setDefaultWatermark，如 PD2606 只认 DEFAULT_PHOTO_IQOO）。跨机型切换后旧缓存没有本机型默认模板 → getCurrentTmpl() 返回 null：开相机在 WatermarkAddition.onStateSessionCreated 崩（2s 一次崩溃循环），进「水印」设置页在 findCurrentTmplIndex 崩（PD2419 实测 2026-11，FINDINGS.md §16）"
+      advice="cam.sh clear 清相机数据——相机重建含本机型默认模板的缓存，水印功能保留；设置回默认、DCIM 媒体不受影响。预防：跨机型移植切换后先别进「水印」设置页；再次崩重跑 clear 即可" ;;
     *configMeatZoomSceneConfig*)
       sig="configMeatZoomSceneConfig is null"
       verdict="伪装码与已装 APK 的 MEAT 不匹配（docs/FINDINGS.md §6）——插件码错，或切换失败导致属性/APK 错位（旧版 state 不回滚）"
