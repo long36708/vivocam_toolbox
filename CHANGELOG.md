@@ -6,7 +6,10 @@
   for ...Util.extractAlphaNative`）：`pd2419.profile` 的 `STOCK_LIB_EXPECT` 历史误填 76，
   而系统原厂 lib 目录实际 82 个 .so——漏采 `libvivo.watermark.process/native.so`、
   `libvivo_cv.so`、`libImageFlip.so` 等 6 个，导致 `cam.sh stock` 后拍照走水印合成崩。
-  期望值改 82 并重建 stock 备份后，stock 状态铺 82 库、水印库加载、拍照实测正常
+  根治：`STOCK_LIB_EXPECT` 支持 `auto`——以当前系统原厂 lib 目录实测数为准，
+  不写死数字（固件批次/原厂更新后库数会变，写死必再错）。`stock_backup`/`stock_ready`/
+  `stock_fill` 三处适配，数字/0 语义保持兼容；pd2419.profile 改用 auto。
+  真机重建备份（82 库）、stock 拍照实测无崩溃
 - **新增 SPOOF_PROPS：插件自带附加伪装属性**（S60 移植实战，PD2419 实测启动即崩
   `IllegalArgumentException: the entries is not match the entryValues`）：
   部分相机功能按"产品系列"分支选资源配对（`DeviceUtil.isSSeries/isXSeries` 双源

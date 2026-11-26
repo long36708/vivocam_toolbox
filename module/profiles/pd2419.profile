@@ -24,7 +24,7 @@ CAM_COUNT=5                    # dumpsys media.camera "Number of camera devices:
 STOCK_PKG=com.android.camera
 STOCK_APK=/system/app/VivoCamera/VivoCamera.apk
 STOCK_LIB_DIR=/system/app/VivoCamera/lib/arm64
-STOCK_LIB_EXPECT=82            # 系统原厂 lib 实际 82 个 .so（旧填 76 漏采水印库等 6 个，致 stock 拍照崩；2026-11-26 实测修正）
+STOCK_LIB_EXPECT=auto          # 以当前系统原厂 lib 目录实测数为准（写死值会随固件批次失效：旧填 76 漏采水印库致 stock 拍照崩，2026-11-26）
 STOCK_ACTIVITY=.CameraActivity
 
 # --- HAL ---

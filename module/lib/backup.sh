@@ -3,8 +3,9 @@
 # lib/backup.sh — 原厂库首启自备份
 #
 # 为什么自备份而不是随包（设计文档 §1.3 / §10）：
-#   原厂 lib/arm64 = 53 实体 + 23 符号链接，链接目标全在 /system/lib64
-#   且全部存在（broken=0）。cp -L 实测 76/76 全部解析成功。
+#   原厂 lib/arm64 = 实体+符号链接混合，链接目标全在 /system/lib64，
+#   cp -L 按链接名落成实体。库数随机型/固件批次而异（PD2419 为 82），
+#   故 STOCK_LIB_EXPECT 用 auto 自适应，别写死数字。
 #   → 每台机备份的是它自己的原厂库，随包带别人的库是错的。
 #
 # 备份目录：$VIVODIR/stock/<profile_id>/
@@ -14,6 +15,21 @@
 STOCK_ROOT=${STOCK_ROOT:-$VIVODIR/stock}
 
 stock_dir(){ echo "$STOCK_ROOT/$1"; }
+
+# STOCK_LIB_EXPECT 可为：数字（精确校验）/ 0（不校验）/ auto（自适应）。
+# auto：以"当前系统原厂 lib 目录实测的 .so 数"为期望，不写死——固件批次
+# 不同、原厂更新后库数会变（PD2419 就因写死 76 而漏采水印库致拍照崩）。
+_stock_expect_auto(){ case "${1:-}" in auto|AUTO) return 0 ;; *) return 1 ;; esac; }
+# 解析期望数：$1=want $2=源目录；数字原样返回，auto 返回源目录实测数，0 返回 0
+_stock_expect_num(){
+  local want=$1 src=${2:-}
+  if _stock_expect_auto "$want"; then
+    [ -n "$src" ] && [ -d "$src" ] && { ls "$src"/*.so 2>/dev/null | wc -l; return; }
+    echo 0
+  else
+    echo "${want:-0}"
+  fi
+}
 
 # ---------- 原厂相机路径解析（多机型关键）----------
 # 路径因机型/OS 代而异：/system/app、/system/priv-app、/product/app 都有
@@ -61,8 +77,11 @@ stock_backup(){
   # 链接名（如 libmmkv.so），所以必须按链接名落成实体文件。
   cp -Lf "$src"/*.so "$tmp/" 2>/dev/null
   local n=$(ls "$tmp"/*.so 2>/dev/null | wc -l)
-  if [ "$want" != "0" ] && [ "$n" != "$want" ]; then
-    echo "!! 备份数量不符: 得到 $n / 期望 $want"
+  # auto 时期望 = 源目录实测数（校验 cp -L 没丢文件，同时自适应固件差异）
+  local expect=$(_stock_expect_num "$want" "$src")
+  if [ "$expect" != "0" ] && [ "$n" != "$expect" ]; then
+    local tag=""; _stock_expect_auto "$want" && tag="(auto)"
+    echo "!! 备份数量不符: 得到 $n / 期望 $expect $tag"
     rm -rf "$tmp"
     return 1
   fi
@@ -103,6 +122,8 @@ stock_ready(){
   [ -d "$dst" ] || return 1
   local n=$(ls "$dst"/*.so 2>/dev/null | wc -l)
   [ "$n" -gt 0 ] || return 1
+  # auto/0 都表示不按固定数校验（auto 的精确校验已在上游 stock_backup 做过）
+  _stock_expect_auto "$want" && return 0
   if [ "$want" != "0" ] && [ "$n" != "$want" ]; then return 1; fi
   return 0
 }
@@ -131,6 +152,8 @@ stock_fill(){
   find "$dstlib" -type f -exec chmod 755 {} \; 2>/dev/null
   local n=$(ls "$dstlib"/*.so 2>/dev/null | wc -l)
   echo "libs=$n${want:+/$want} (stock-backup)"
+  # auto/0 不按固定数校验；数字走精确校验（向后兼容）
+  _stock_expect_auto "$want" && return 0
   [ "$want" = "0" ] || [ "$n" = "$want" ] || return 1
   return 0
 }
