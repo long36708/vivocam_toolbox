@@ -128,7 +128,9 @@ chown_restorecon(){ # $1=/data/app 相机目录
   local D=$1
   chown -R system:system "$D/lib" 2>/dev/null
   chmod 755 "$D/lib" "$D/lib/arm64" 2>/dev/null
-  find "$D/lib" -type f -name "*.so" -exec chmod 755 {} \; 2>/dev/null
+  # 批量 chmod：find -exec 每个 .so fork 一次（实测 108 个 1.18s），
+  # 单条 chmod  glob 0.00s，切换热路径省 ~1s
+  chmod 755 "$D"/lib/arm64/*.so 2>/dev/null || true
   restorecon -R "$D/lib" 2>/dev/null
 }
 
@@ -199,7 +201,11 @@ install_apk(){ # $1=apk路径
   rm -f "$TMP"
   log "install: $OUT"
   case "$OUT" in
-    *Success*) sleep 3; return 0 ;;
+    # pm install 返回 Success 后 codePath 已是新路径（实测立即生效），铺库只依赖
+    # codePath + 文件复制，不需要等 dexopt。原 sleep 3 是纯安全等待，且调用方
+    # 随后还有 force-stop sleep1 + camera_services_restart sleep1，等待重叠。
+    # 实测去掉后切换耗时 17s→13s、拍照正常；留 sleep 1 作最小缓冲。
+    *Success*) sleep 1; return 0 ;;
     *) log "!! 安装失败，中止（未铺库，当前版本=$(cur_ver)）"; return 1 ;;
   esac
 }

@@ -199,7 +199,8 @@ pool_fill(){
     fi
   done < "$list"
   chmod 755 "$dst" 2>/dev/null
-  find "$dst" -type f -name "*.so" -exec chmod 755 {} \; 2>/dev/null
+  # 批量 chmod：find -exec 每库 fork 一次（108 库实测 1.18s），glob 单条 0.00s
+  chmod 755 "$dst"/*.so 2>/dev/null || true
   [ -n "$miss" ] && echo "!! 失败/缺内容:$miss"
   local real=$(ls "$dst"/*.so 2>/dev/null | wc -l)
   echo "libs=$real${want:+/$want} (pool)"

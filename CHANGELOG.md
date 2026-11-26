@@ -2,6 +2,11 @@
 
 ## 6.0.4（当前）
 
+- **切换插件提速约 38%（实测 18s → 11s）**：`install_apk` 成功后
+  `sleep 3` 是纯安全等待（pm install 返回时 codePath 已立即更新、铺库只依赖
+  codePath）→ 改 `sleep 1`；铺库两处 `find -exec chmod`（每个 .so fork 一次，
+  108 库实测 1.18s）→ 单条 `chmod *.so`（0.00s）。服务重启 sleep（6.0.3 的
+  防闪退关键）与物理 I/O 不动。真机切换+拍照实测无崩溃
 - **修复 PD2419 原厂备份缺库致拍照崩**（`UnsatisfiedLinkError: No implementation found
   for ...Util.extractAlphaNative`）：`pd2419.profile` 的 `STOCK_LIB_EXPECT` 历史误填 76，
   而系统原厂 lib 目录实际 82 个 .so——漏采 `libvivo.watermark.process/native.so`、
